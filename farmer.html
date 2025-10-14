@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Farmer - AgriMovers</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #4CAF50;
+      color: white;
+    }
+    tr:nth-child(even) {
+      background-color: #f2f2f2;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h2>Farmer Dashboard</h2>
+      <div>
+        <span id="userName"></span>
+        <button onclick="logout()">Logout</button>
+      </div>
+    </header>
+
+    <section>
+      <h3>Create Transport Request</h3>
+      <div class="form-row"><input id="produce" class="input" placeholder="Produce (e.g., Maize)" /></div>
+      <div class="form-row"><input id="quantity" class="input" placeholder="Quantity (kg)" /></div>
+      <div class="form-row"><input id="pickup_time" class="input" type="datetime-local" placeholder="Pickup time" /></div>
+      <div class="form-row"><input id="pickup_location" class="input" placeholder="Pickup location" /></div>
+      <div class="form-row"><input id="destination" class="input" placeholder="Destination" /></div>
+      <div class="form-row">
+        <select id="vehicleType" class="input small">
+          <option value="">Select Vehicle</option>
+          <option value="Van">Van</option>
+          <option value="Lorry">Lorry</option>
+          <option value="Pickup">Pickup</option>
+          <option value="Tractor">Tractor</option>
+        </select>
+      </div>
+      <div class="form-row"><button onclick="submitRequest()">Submit Request</button></div>
+    </section>
+
+    <section>
+      <h3>My Requests</h3>
+      <table id="requestsTable">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Produce</th>
+            <th>Quantity (kg)</th>
+            <th>Pickup Time</th>
+            <th>Pickup Location</th>
+            <th>Destination</th>
+            <th>Vehicle Type</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="requestsArea"></tbody>
+      </table>
+    </section>
+  </div>
+
+<script>
+async function submitRequest() {
+  const data = {
+    produce: document.getElementById('produce').value.trim(),
+    quantity: document.getElementById('quantity').value.trim(),
+    pickup_time: document.getElementById('pickup_time').value,
+    pickup_location: document.getElementById('pickup_location').value.trim(),
+    destination: document.getElementById('destination').value.trim(),
+    vehicleType: document.getElementById('vehicleType').value
+  };
+
+  if (!data.produce || !data.quantity || !data.pickup_time || !data.pickup_location || !data.destination || !data.vehicleType) {
+    alert("Please fill all fields and select a vehicle type.");
+    return;
+  }
+
+  try {
+    const res = await fetch('/request-transport', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(data)
+    });
+
+    const d = await res.json();
+    if (!res.ok) { alert(d.message || 'Error submitting request'); return; }
+
+    alert(d.message);
+    ['produce','quantity','pickup_time','pickup_location','destination','vehicleType'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+
+    loadMyRequests();
+  } catch (err) {
+    console.error(err);
+    alert('An error occurred while submitting the request.');
+  }
+}
+
+async function loadMyRequests() {
+  const res = await fetch('/my-requests', { credentials: 'same-origin' });
+  const rows = await res.json();
+  const tableBody = document.getElementById('requestsArea');
+
+  tableBody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.id}</td>
+      <td>${r.produce}</td>
+      <td>${r.quantity}</td>
+      <td>${new Date(r.pickup_time).toLocaleString()}</td>
+      <td>${r.pickup_location}</td>
+      <td>${r.destination}</td>
+      <td>${r.vehicleType}</td>
+      <td>${r.status}</td>
+    </tr>
+  `).join('');
+}
+
+async function logout(){
+  await fetch('/logout', { method:'POST', credentials:'same-origin' });
+  window.location.href = '/login.html';
+}
+
+(async () => {
+  const s = await fetch('/session-user', { credentials: 'same-origin' }).then(r => r.json());
+  if(!s.loggedIn || s.user.role!=='farmer') return location.href='/login.html';
+  document.getElementById('userName').innerText = s.user.name;
+
+  loadMyRequests();
+})();
+</script>
+</body>
+</html>

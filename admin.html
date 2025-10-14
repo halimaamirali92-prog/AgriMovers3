@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Admin - AgriMovers</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h2>Admin Dashboard</h2>
+      <div><button onclick="logout()">Logout</button></div>
+    </header>
+
+    <!-- ===== USERS TABLE ===== -->
+    <section>
+      <h3>Users</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Full Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="usersArea"></tbody>
+      </table>
+    </section>
+
+    <!-- ===== TRANSPORT REQUESTS TABLE ===== -->
+    <section>
+      <h3>Transport Requests</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Produce</th>
+            <th>Quantity</th>
+            <th>Pickup Location</th>
+            <th>Destination</th>
+            <th>Vehicle Type</th>
+            <th>Farmer Name</th>
+            <th>Transporter Name</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="requestsArea"></tbody>
+      </table>
+    </section>
+  </div>
+
+<script>
+async function loadData() {
+  // Load users
+  const users = await fetch('/admin/users', { credentials: 'same-origin' }).then(r => r.json());
+  document.getElementById('usersArea').innerHTML = users.map(u => `
+    <tr>
+      <td>${u.id}</td>
+      <td>${u.fullname}</td>
+      <td>${u.email}</td>
+      <td>${u.role}</td>
+      <td>-</td>
+    </tr>
+  `).join('');
+
+  // Load transport requests
+  const reqs = await fetch('/admin/requests', { credentials: 'same-origin' }).then(r => r.json());
+  document.getElementById('requestsArea').innerHTML = reqs.map(r => `
+    <tr>
+      <td>${r.id}</td>
+      <td>${r.produce}</td>
+      <td>${r.quantity}</td>
+      <td>${r.pickup_location}</td>
+      <td>${r.destination}</td>
+      <td>${r.vehicleType}</td>
+      <td>${r.farmer_name}</td>
+      <td>${r.transporter_name || '-'}</td>
+      <td>${r.status}</td>
+      <td>-</td>
+    </tr>
+  `).join('');
+}
+
+// Check session and load data
+(async () => {
+  const s = await fetch('/session-user', { credentials: 'same-origin' }).then(r => r.json());
+  if(!s.loggedIn || s.user.role !== 'admin') return location.href = '/login.html';
+  loadData();
+})();
+
+// ✅ Fixed logout function
+async function logout() {
+  try {
+    await fetch('/logout', { method: 'POST', credentials: 'same-origin' });
+    window.location.href = '/login.html';
+  } catch (err) {
+    alert('Logout failed.');
+  }
+}
+</script>
+</body>
+</html>

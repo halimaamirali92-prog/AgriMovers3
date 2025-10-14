@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Login - AgriMovers</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h2>Login</h2>
+    <div id="msg" class="alert" style="display:none"></div>
+    <div class="form-row"><input id="email" class="input" placeholder="Email" /></div>
+    <div class="form-row"><input id="password" type="password" class="input" placeholder="Password" /></div>
+    <div class="form-row">
+      <button id="loginBtn">Login</button>
+      <button class="secondary" onclick="location.href='register.html'">Register</button>
+    </div>
+  </div>
+
+  <script>
+  document.getElementById('loginBtn').onclick = async () => {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const msg = document.getElementById('msg');
+    msg.style.display = 'none';
+
+    if(!email || !password){ msg.innerText='Provide email and password'; msg.style.display='block'; return; }
+
+    try{
+      const res = await fetch('/login',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({email,password})
+      });
+      const data = await res.json();
+
+      if(!res.ok){ msg.innerText = data.message||'Login failed'; msg.style.display='block'; return; }
+
+      sessionStorage.setItem('user',JSON.stringify(data.user));
+      const role = data.role;
+      if(role==='farmer') location.href='/farmer.html';
+      else if(role==='transporter') location.href='/transporter.html';
+      else if(role==='admin') location.href='/admin.html';
+      else location.href='/index.html';
+
+    } catch(err){
+      console.error(err);
+      msg.innerText='Server error. Try again.'; msg.style.display='block';
+    }
+  };
+  </script>
+</body>
+</html>
