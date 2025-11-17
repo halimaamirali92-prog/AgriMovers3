@@ -1,0 +1,36 @@
+{
+  "name": "agrimovers3",
+  "version": "1.0.0",
+  "description": "AgriMovers - Smart logistics platform for rural agricultural transport (prototype)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "seed": "node scripts/seed.js"
+  },
+  "keywords": [
+    "agriculture",
+    "logistics",
+    "transport",
+    "node",
+    "express"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.13.2",
+    "bcrypt": "^6.0.0",
+    "body-parser": "^2.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "express-session": "^1.18.2",
+    "multer": "^2.0.2",
+    "mysql2": "^3.15.3",
+    "socket.io": "^4.8.1",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  }
+}

@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AgriMovers - Farmer Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <!-- LEAFLET (OpenStreetMap) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    /* --- Global Layout --- */
+    body {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+      background: #f5f7fa;
+      font-family: 'Poppins', 'Segoe UI', sans-serif;
+      color: #333;
+    }
+    /* --- Sidebar --- */
+    .sidebar {
+      width: 250px;
+      background: linear-gradient(180deg, #1e2a38 0%, #263544 100%);
+      color: #fff;
+      padding: 25px 20px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 4px 0 12px rgba(0, 0, 0, 0.1);
+      border-top-right-radius: 20px;
+      border-bottom-right-radius: 20px;
+    }
+    .sidebar h4 {
+      font-weight: 600;
+      color: #f8f9fa;
+      letter-spacing: 1px;
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+    .sidebar button {
+      color: #e9ecef;
+      text-align: left;
+      background: rgba(255, 255, 255, 0.05);
+      border: none;
+      width: 100%;
+      padding: 12px 15px;
+      margin-bottom: 8px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+      transition: all 0.25s ease-in-out;
+    }
+    .sidebar button:hover {
+      background-color: #198754;
+      color: #fff;
+      transform: translateX(5px);
+    }
+    .sidebar button.active {
+      background-color: #0d6efd;
+      color: #fff;
+      box-shadow: 0 4px 10px rgba(13, 110, 253, 0.3);
+    }
+    .bottom-buttons {
+      margin-top: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .bottom-buttons button {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    .bottom-buttons button:hover {
+      background-color: #dc3545;
+      color: #fff;
+    }
+    /* --- Main Content --- */
+    .main-content {
+      flex-grow: 1;
+      overflow-y: auto;
+      padding: 30px;
+      background: #ffffff;
+      border-top-left-radius: 25px;
+      border-bottom-left-radius: 25px;
+      box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.05);
+    }
+    .main-content h3 {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 25px;
+      color: #212529;
+      border-bottom: 3px solid #0d6efd;
+      display: inline-block;
+      padding-bottom: 5px;
+    }
+    /* --- Tables --- */
+    .table {
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+    }
+    .table th {
+      background: #0d6efd;
+      color: #fff;
+      text-transform: uppercase;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+      padding: 12px;
+    }
+    .table td {
+      vertical-align: middle;
+      padding: 12px;
+    }
+    .table tr:hover {
+      background: rgba(13, 110, 253, 0.05);
+      transition: 0.3s ease;
+    }
+    /* --- Scrollbar --- */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #0d6efd;
+      border-radius: 10px;
+    }
+    /* --- Leaflet Map --- */
+    .leaflet-container {
+      height: 220px;
+      border-radius: 12px;
+      border: 2px solid #0d6efd;
+      margin-top: 8px;
+    }
+    /* --- Responsive --- */
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 200px;
+        padding: 15px;
+      }
+      .sidebar h4 { font-size: 16px; }
+      .sidebar button { font-size: 13px; padding: 10px; }
+      .main-content { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h4>Farmer</h4>
+    <button id="navProfile" class="active">Profile</button>
+    <button id="navTransporters">Transporters</button>
+    <button id="navRequests">Create Request</button>
+    <button id="navMyRequests">My Requests</button>
+    <button id="navDisputes">My Disputes</button>
+    <hr class="bg-light">
+    <div class="bottom-buttons">
+      <button id="editProfileBtn">Edit Profile</button>
+      <button id="logoutBtn" class="btn btn-sm btn-outline-light">Logout</button>
+    </div>
+  </div>
+  <div class="main-content">
+    <!-- Profile Section -->
+    <div id="sectionProfile">
+      <h3>Your Profile</h3>
+      <div class="card p-3">
+        <div class="d-flex align-items-center mb-3">
+          <img id="profilePhoto" src="default-profile.png" alt="Profile" class="rounded-circle me-3" width="80" height="80" style="object-fit:cover;">
+          <div>
+            <h5 id="profileName">Loading...</h5>
+            <div class="text-muted" id="profileEmailSmall"></div>
+          </div>
+        </div>
+        <div>
+          <p><strong>Phone:</strong> <span id="profilePhone">-</span></p>
+          <p><strong>Location:</strong> <span id="profileLocation">-</span></p>
+        </div>
+      </div>
+      <div id="editProfileForm" class="card p-3 mt-3" style="display:none;">
+        <h5>Edit Profile</h5>
+        <form id="profileForm" enctype="multipart/form-data">
+          <div class="mb-3"><label class="form-label">Full Name</label><input type="text" class="form-control" name="fullname"></div>
+          <div class="mb-3"><label class="form-label">Phone</label><input type="text" class="form-control" name="phone"></div>
+          <div class="mb-3"><label class="form-label">Location</label><input type="text" class="form-control" name="location"></div>
+          <div class="mb-3">
+            <label class="form-label">Latitude(optional - auto-filled from GPS)</label>
+            <input type="text" class="form-control" name="lat" placeholder="e.g. -1.2921">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Longitude(optional - auto-filled from GPS)</label>
+            <input type="text" class="form-control" name="lng" placeholder="e.g. 36.8219">
+          </div>
+          <div class="mb-3">
+            <button type="button" id="autoFillGps" class="btn btn-info btn-sm">Fill from GPS</button>
+          </div>
+          <div class="mb-3"><label class="form-label">Profile Image</label><input type="file" class="form-control" name="profile_image" accept="image/*"></div>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+          <button type="button" id="cancelEdit" class="btn btn-secondary ms-2">Cancel</button>
+          <div id="updateMsg" class="mt-2 text-success"></div>
+        </form>
+      </div>
+    </div>
+    <!-- Transporters Section -->
+    <div id="sectionTransporters" style="display:none;">
+      <h3>Available Transporters & Rates</h3>
+      <div class="card p-3"><div id="transportersTable">(loading...)</div></div>
+    </div>
+    <!-- Create Request -->
+    <div id="sectionRequests" style="display:none;">
+      <h3>Create Transport Request</h3>
+      <div class="card p-3">
+        <form id="requestForm">
+          <div class="mb-3"><label class="form-label">Produce</label><input type="text" class="form-control" name="produce" required></div>
+          <div class="mb-3"><label class="form-label">Quantity (tons)</label><input type="number" class="form-control" name="quantity" required></div>
+          <div class="mb-3"><label class="form-label">Pickup Location</label><input type="text" class="form-control" name="pickup_location" required></div>
+          <div class="mb-3"><label class="form-label">Destination</label><input type="text" class="form-control" name="destination" required></div>
+          <div class="mb-3"><label class="form-label">Distance (km)</label><input type="number" class="form-control" id="distance" name="distance_km" required></div>
+          <div class="mb-3">
+            <label class="form-label">Vehicle Type</label>
+            <select class="form-select" id="vehicleType" name="vehicleType" required>
+              <option value="">Select type</option>
+              <option value="Lorry">Lorry</option>
+              <option value="Van">Van</option>
+              <option value="Pickup">Pickup</option>
+              <option value="Tractor">Tractor</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Choose Transporter</label>
+            <select class="form-select" id="transporterSelect" name="transporterId" required>
+              <option value="">Select transporter</option>
+            </select>
+          </div>
+          <div class="mb-3"><p><strong>Estimated Cost:</strong> <span id="estimateCost">KES 0</span></p></div>
+          <button type="submit" class="btn btn-primary">Submit Request</button>
+          <div id="requestMsg" class="mt-2 text-success"></div>
+        </form>
+      </div>
+    </div>
+    <!-- My Requests -->
+    <div id="sectionMyRequests" style="display:none;">
+      <h3>My Requests</h3>
+      <div class="card p-3">
+        <div id="myRequestsArea">(loading...)</div>
+      </div>
+    </div>
+    <!--My Disputes-->
+  <div id="sectionDisputes" style="display:none;">
+    <h3>My Disputes</h3>
+    <div class="card p-3" id="disputesArea">Loading... </div>
+  </div>
+  </div>
+  
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // === NAVIGATION ===
+   const sections = {
+      profile: document.getElementById('sectionProfile'),
+      transporters: document.getElementById('sectionTransporters'),
+      requests: document.getElementById('sectionRequests'),
+      myRequests: document.getElementById('sectionMyRequests'),
+      disputes: document.getElementById('sectionDisputes')  // ← comma added
+    };
+
+    const navBtns = {
+      profile: document.getElementById('navProfile'),
+      transporters: document.getElementById('navTransporters'),
+      requests: document.getElementById('navRequests'),
+      myRequests: document.getElementById('navMyRequests'),
+      disputes: document.getElementById('navDisputes')       // ← comma added
+    };
+    function showSection(k) {
+      Object.values(sections).forEach(s => s.style.display = 'none');
+      sections[k].style.display = 'block';
+      Object.values(navBtns).forEach(b => b.classList.remove('active'));
+      navBtns[k].classList.add('active');
+      if (k === 'transporters') loadTransporters();
+      if (k === 'profile') loadProfileData();
+      if (k === 'myRequests') loadMyRequests();
+      if (k === 'disputes') loadMyDisputes()
+    }
+    Object.keys(navBtns).forEach(k => navBtns[k].onclick = () => showSection(k));
+    document.getElementById('logoutBtn').onclick = async () => {
+      await fetch('/logout', { method: 'GET', credentials: 'same-origin' });
+      location.href = 'index.html';
+    };
+    // === AUTH & PROFILE ===
+    async function ensureFarmer() {
+      const r = await fetch('/session-user', { credentials: 'same-origin' });
+      const d = await r.json();
+      if (!d.loggedIn || d.user.role !== 'farmer') {
+        alert('Please login as Farmer');
+        location.href = 'index.html';
+      }
+    }
+    async function loadProfileData() {
+      const r = await fetch('/api/farmer/profile', { credentials: 'same-origin' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return alert('Error loading profile');
+      document.getElementById('profileName').textContent = d.fullname || '';
+      document.getElementById('profileEmailSmall').textContent = d.email || '';
+      document.getElementById('profilePhone').textContent = d.phone || '-';
+      document.getElementById('profileLocation').textContent = d.location || '-';
+      if (d.profile_image_url) document.getElementById('profilePhoto').src = d.profile_image_url;
+      if (d.lat && d.lng) {
+      document.getElementById('profileLocation').innerHTML = 
+        (d.location || 'Not set') + 
+        `<br><small class="text-success"><strong>GPS:</strong> ${parseFloat(d.lat).toFixed(6)}, ${parseFloat(d.lng).toFixed(6)}</small>`;
+       } else {
+      document.getElementById('profileLocation').textContent = d.location || '-';
+      }
+      return d; // Return data for pre-filling form
+    }
+    document.getElementById('editProfileBtn').onclick = async () => {
+      const profileData = await loadProfileData(); // Reload to get latest
+      document.querySelector('input[name="fullname"]').value = profileData.fullname || '';
+      document.querySelector('input[name="phone"]').value = profileData.phone || '';
+      document.querySelector('input[name="location"]').value = profileData.location || '';
+      document.querySelector('input[name="lat"]').value = profileData.lat ? parseFloat(profileData.lat).toFixed(6) : '';
+      document.querySelector('input[name="lng"]').value = profileData.lng ? parseFloat(profileData.lng).toFixed(6) : '';
+      document.getElementById('editProfileForm').style.display = 'block';
+    };
+    document.getElementById('cancelEdit').onclick = () => document.getElementById('editProfileForm').style.display = 'none';
+    document.getElementById('profileForm').onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const r = await fetch('/api/farmer/update-profile', { method: 'POST', credentials: 'same-origin', body: fd });
+      const d = await r.json();
+      const msg = document.getElementById('updateMsg');
+      if (!r.ok) { msg.textContent = d.message || 'Error'; msg.classList.add('text-danger'); }
+      else {
+        msg.textContent = 'Profile updated'; msg.classList.remove('text-danger');
+        loadProfileData();
+        setTimeout(() => { msg.textContent = ''; document.getElementById('editProfileForm').style.display = 'none'; }, 2000);
+      }
+    };
+    document.getElementById('autoFillGps').onclick = () => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            document.querySelector('input[name="lat"]').value = pos.coords.latitude.toFixed(6);
+            document.querySelector('input[name="lng"]').value = pos.coords.longitude.toFixed(6);
+          },
+          () => alert('Unable to get GPS location.')
+        );
+      } else {
+        alert('Geolocation not supported.');
+      }
+    };
+    //Load Disputes
+async function loadMyDisputes() {
+  const area = document.getElementById('disputesArea');
+  area.innerHTML = 'Loading...';
+  
+  try {
+    const r = await fetch('/api/farmer/disputes', { credentials: 'same-origin' });
+    const disputes = await r.json();
+    
+    if (!r.ok || disputes.length === 0) {
+      area.innerHTML = '<div class="text-muted">No disputes found.</div>';
+      return;
+    }
+    
+    area.innerHTML = disputes.map(d => `
+      <div class="mb-3 p-3 border rounded ${d.status === 'Resolved' ? 'border-success' : 'border-warning'}">
+        <div><strong>Dispute #${d.id}</strong> vs <strong>${d.transporter_name || 'Unknown'}</strong></div>
+        <div class="small mt-1">${d.description}</div>
+        <div class="mt-2">
+          <span class="badge ${d.status === 'Resolved' ? 'bg-success' : 'bg-warning'}">${d.status}</span>
+          ${d.status === 'Resolved' && d.admin_notes ? `<br><small><em>Admin notes: ${d.admin_notes}</em></small>` : ''}
+        </div>
+        <div class="text-muted small mt-2">Created: ${new Date(d.created_at).toLocaleDateString()}</div>
+      </div>
+    `).join('');
+  } catch (err) {
+    area.innerHTML = '<div class="text-danger">Error loading disputes</div>';
+  }
+}
+    // === TRANSPORTERS ===
+    let farmerLat = null, farmerLng = null;
+    let savedLat = null, savedLng = null;
+    async function loadTransporters(lat = null, lng = null) {
+      let url = '/api/transporters-with-rates';
+      if (lat && lng) { url += `?lat=${lat}&lng=${lng}`; farmerLat = lat; farmerLng = lng; }
+      const r = await fetch(url, { credentials: 'same-origin' });
+      const data = await r.json().catch(() => []);
+      const div = document.getElementById('transportersTable');
+      if (!r.ok || !data.length) { div.innerHTML = '<div class="text-muted">No transporters found nearby.</div>'; return; }
+      const rows = data.map(t => `
+        <tr>
+          <td>${t.transporter_name}</td>
+          <td>${t.availability ? '<span class="badge bg-success">Available</span>' : '<span class="badge bg-secondary">Unavailable</span>'}</td>
+          <td>${t.rates.Lorry || '-'}</td>
+          <td>${t.rates.Van || '-'}</td>
+          <td>${t.rates.Pickup || '-'}</td>
+          <td>${t.rates.Tractor || '-'}</td>
+          <td><small>${t.distance_km ? Math.round(t.distance_km) + ' km' : ''}</small></td>
+        </tr>`).join('');
+      div.innerHTML = `
+        <table class="table table-bordered table-striped">
+          <thead><tr><th>Transporter</th><th>Status</th><th>Lorry(<span style="color:brown;">Rate per km)</th><th>Van(<span style="color:brown;">Rate per km)</th><th>Pickup(<span style="color:brown;">Rate per km)</th><th>Tractor(<span style="color:brown;">Rate per km)</th><th>Distance Apart</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+      const sel = document.getElementById('transporterSelect');
+      sel.innerHTML = '<option value="">Select transporter</option>' +
+        data.filter(t => t.availability).map(t => `<option value="${t.id}">${t.transporter_name} (${Math.round(t.distance_km || 0)} km)</option>`).join('');
+    }
+    document.getElementById('navTransporters').addEventListener('click', () => {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        
+        farmerLat = lat;
+        farmerLng = lng;
+        savedLat = lat;
+        savedLng = lng;
+
+        // Save to server for future visits
+        await fetch('/api/farmer/update-location', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ lat, lng })
+        });
+
+        loadTransporters(lat, lng);
+        showToast("Location updated — showing nearest transporters");
+      },
+      () => {
+        // Geolocation denied or failed → use saved location if exists
+        if (savedLat && savedLng) {
+          loadTransporters(savedLat, savedLng);
+          showToast("Using your saved location");
+        } else {
+          loadTransporters(); // show all
+          showToast("Location access denied — showing all transporters");
+        }
+      }
+    );
+  } else {
+    // Browser doesn't support geolocation
+    if (savedLat && savedLng) {
+      loadTransporters(savedLat, savedLng);
+      showToast("Using your saved location");
+    } else {
+      loadTransporters();
+    }
+  }
+});
+    // === ESTIMATE ===
+    const vehicleType = document.getElementById('vehicleType');
+    const distance = document.getElementById('distance');
+    const quantityInput = document.querySelector('input[name="quantity"]');
+    const transporterSelect = document.getElementById('transporterSelect');
+    const estimateCost = document.getElementById('estimateCost');
+    vehicleType.onchange = distance.oninput = quantityInput.oninput = transporterSelect.onchange = calcEstimate;
+    async function calcEstimate() {
+      const tid = transporterSelect.value, v = vehicleType.value;
+      const dist = parseFloat(distance.value) || 0, qty = parseFloat(quantityInput.value) || 0;
+      if (!tid || !v) { estimateCost.textContent = 'KES 0'; return; }
+      try {
+        const r = await fetch(`/api/transporter/${tid}/rates`, { credentials: 'same-origin' });
+        const d = await r.json().catch(() => ({}));
+        const rate = d[v] ? parseFloat(d[v]) : 0;
+        const total = rate * dist * (qty || 1);
+        estimateCost.textContent = `KES ${total.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+      } catch { estimateCost.textContent = 'KES 0'; }
+    }
+    document.getElementById('requestForm').onsubmit = async e => {
+      e.preventDefault();
+      const payload = Object.fromEntries(new FormData(e.target).entries());
+      const r = await fetch('/api/farmer/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(payload) });
+      const d = await r.json();
+      const msg = document.getElementById('requestMsg');
+      if (!r.ok) { msg.textContent = d.message || 'Error'; msg.classList.add('text-danger'); return; }
+      msg.textContent = 'Request submitted'; setTimeout(() => msg.textContent = '', 3000); e.target.reset();
+    };
+    // === MY REQUESTS + LIVE TRACKING (OPENSTREETMAP) ===
+    let farmerMaps = {};
+    async function loadMyRequests() {
+      const area = document.getElementById('myRequestsArea');
+      const r = await fetch('/my-requests', { credentials: 'same-origin' });
+      const d = await r.json().catch(() => []);
+      if (!r.ok || !d.length) { area.innerHTML = '<div>No requests yet.</div>'; return; }
+      area.innerHTML = d.map(req => `
+        <div class="mb-3 p-3 border rounded">
+          <div><strong>#${req.id}</strong> ${req.produce} — ${req.quantity} tons
+            <span class="badge bg-light text-dark">${req.status}</span>
+          </div>
+          <div class="small">Pickup: ${req.pickup_location} → ${req.destination} | Vehicle: ${req.vehicleType}</div>
+          <div class="mt-1"><strong>Transporter:</strong> ${req.transporter_name || 'Pending'}</div>
+          ${req.transporter_response ? `<div><strong>Response:</strong> ${req.transporter_response}</div>` : ''}
+          ${req.proposed_rate ? `<div><strong>Proposed Rate:</strong> KES ${req.proposed_rate}</div>` : ''}
+          ${['Picked', 'En Route'].includes(req.status) ? `
+            <div class="mt-3">
+              <div id="map-${req.id}" class="leaflet-container"></div>
+              <small class="text-success"><strong>Live Tracking Active</strong></small>
+            </div>` : ''}
+          ${req.status === 'Accepted' && req.payment_status === 'Pending' ? `
+            <div class="mt-3 p-3 bg-warning text-dark rounded">
+              <div><strong>Payment Required</strong></div>
+              <div class="small mb-2">Total: <strong>KES ${req.total_amount}</strong></div>
+              <button class="btn btn-success btn-sm pay-now" data-id="${req.id}" data-amount="${req.total_amount}">
+                Pay Now
+              </button>
+              <div class="mt-2 small text-danger" id="countdown-${req.id}" style="display:none;"></div>
+            </div>` : ''}
+          ${req.status === 'Delivered' && !req.rating ? `
+            <div class="mt-3 p-2 bg-light rounded">
+              <label class="form-label"><strong>Rate Transporter:</strong></label>
+              <select id="rating-${req.id}" class="form-select form-select-sm d-inline-block w-auto">
+                <option value="">Select</option>
+                ${[1,2,3,4,5].map(n => `<option value="${n}">${n} Stars</option>`).join('')}
+              </select>
+              <input type="text" id="feedback_${req.id}" class="form-control form-control-sm d-inline-block w-50 ms-2" placeholder="Optional feedback">
+              <button class="btn btn-sm btn-primary ms-2 submit-rating" data-id="${req.id}">Submit</button>
+            </div>` : req.rating ? `
+            <div class="mt-2 text-success">
+              <strong>Rated ${req.rating}/5 Stars</strong><br>
+              ${req.feedback ? `<em>"${req.feedback}"</em>` : ''}
+            </div>` : ''}
+        </div>
+      `).join('');
+      setTimeout(() => {
+        document.querySelectorAll('[id^="map-"]').forEach(el => {
+          const requestId = el.id.split('-')[1];
+          if (!farmerMaps[requestId]) initTrackingMap(requestId);
+        });
+      }, 100);
+    }
+    // === PAYMENT BUTTON & STK PUSH ===
+    document.addEventListener('click', async e => {
+      if (!e.target.classList.contains('pay-now')) return;
+      const btn = e.target;
+      const requestId = btn.dataset.id;
+      const amount = btn.dataset.amount;
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      let countdownInterval;  // To store the interval for clearing
+      try {
+        const res = await fetch('/api/farmer/pay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ requestId })
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.message);
+        showToast(`STK Push sent! Pay KES ${amount} on your phone.`);
+        
+        // Start 60s countdown
+        const countdownEl = document.getElementById(`countdown-${requestId}`);
+        countdownEl.style.display = 'block';
+        let timeLeft = 60;
+        countdownInterval = setInterval(() => {
+          countdownEl.textContent = `Check phone... ${timeLeft}s`;
+          if (timeLeft <= 0) {
+            clearInterval(countdownInterval);
+            countdownEl.textContent = 'STK Push expired. Try again.';
+            btn.disabled = false;
+            btn.textContent = 'Pay Now';
+          }
+          timeLeft--;
+        }, 1000);
+        btn.textContent = 'Processing...';  // Update button text during polling
+      } catch (err) {
+        alert(err.message);
+        btn.disabled = false;
+        btn.textContent = 'Pay Now';
+      }
+    });
+    function initTrackingMap(requestId) {
+      const mapEl = document.getElementById(`map-${requestId}`);
+      if (!mapEl || farmerMaps[requestId]) return;
+      const map = L.map(mapEl).setView([-1.2921, 36.8219], 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(map);
+      const marker = L.marker([-1.2921, 36.8219], {
+        icon: L.icon({
+          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41]
+        })
+      }).addTo(map);
+      farmerMaps[requestId] = { map, marker };
+      socket.emit('join-tracking', requestId);
+    }
+    // === RATING ===
+    document.addEventListener('click', async e => {
+      if (!e.target.classList.contains('submit-rating')) return;
+      const requestId = e.target.dataset.id;
+      const rating = document.querySelector(`#rating-${requestId}`).value;
+      const feedback = document.querySelector(`#feedback_${requestId}`).value.trim();
+      if (!rating) return alert("Select a rating");
+      const res = await fetch(`/api/farmer/rate/${requestId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ rating, feedback })
+      });
+      const d = await res.json();
+      if (!res.ok) alert(d.message || "Error");
+      else { alert("Rating submitted!"); loadMyRequests(); }
+    });
+    function showToast(msg) {
+      const toast = document.createElement('div');
+      toast.className = 'position-fixed top-0 end-0 p-3';
+      toast.style.zIndex = '9999';
+      toast.innerHTML = `
+        <div class="toast align-items-center text-white bg-success border-0" role="alert">
+          <div class="d-flex">
+            <div class="toast-body">${msg}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+          </div>
+        </div>`;
+      document.body.appendChild(toast);
+      new bootstrap.Toast(toast.querySelector('.toast')).show();
+      setTimeout(() => toast.remove(), 5000);
+    }
+    // === SOCKET.IO ===
+    const socket = io({ withCredentials: true });
+    socket.on('connect', () => console.log('Connected for tracking'));
+    socket.on('live-location', data => {
+      const { requestId, lat, lng } = data;
+      const obj = farmerMaps[requestId];
+      if (!obj) return;
+      const { map, marker } = obj;
+      const pos = [lat, lng];
+      marker.setLatLng(pos);
+      map.panTo(pos);
+    });
+    // receive status update
+    socket.on('request-updated', (update) => {
+      console.log('Request updated:', update);
+      loadMyRequests(); // Reload on update
+      showToast(`Request #${update.id} is now: ${update.status}`);
+    });
+    // === PAYMENT SUCCESS HANDLER ===
+    socket.on('payment-success', (data) => {
+      loadMyRequests();  // Reload the list to reflect 'Paid' and hide "Pay Now"
+      showToast(`Payment confirmed for request #${data.requestId}! Receipt: ${data.receipt}`);
+      const countdownEl = document.getElementById(`countdown-${data.requestId}`);
+      if (countdownEl) countdownEl.style.display = 'none';  // Hide countdown
+      const btn = document.querySelector(`.pay-now[data-id="${data.requestId}"]`);
+      if (btn) {
+        btn.textContent = 'Paid';
+        btn.disabled = true;
+      }
+    });
+    //Dispute resolved notification
+    socket.on('dispute-resolved', (data) => {
+      showToast(`✅ Dispute #${data.disputeId} Resolved`, 'success');
+      
+      if (data.notes) {
+        setTimeout(() => {
+          alert(`Admin Notes:\n\n${data.notes}`);
+        }, 800);
+      }
+    });
+    // === START ===
+    ensureFarmer().then(() => {
+      loadProfileData();
+      showSection('profile');
+    });
+  </script>
+</body>
+</html>

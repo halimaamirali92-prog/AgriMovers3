@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AgriMovers - Transporter Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- LEAFLET (FREE MAPS) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    body {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+      background-color: #f8f9fa;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .sidebar {
+      width: 240px;
+      background-color: #1e2a38;
+      color: #fff;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar h4 { color:#fff; margin-bottom:1.5rem; }
+    .sidebar button {
+      color:#fff; text-align:left; background:none; border:none;
+      width:100%; padding:10px 15px; margin-bottom:5px;
+      border-radius:8px; font-size:15px;
+    }
+    .sidebar button.active, .sidebar button:hover { background-color:#0d6efd; }
+    .bottom-buttons { margin-top:auto; display:flex; flex-direction:column; gap:8px; }
+    .main-content { flex-grow:1; overflow-y:auto; padding:20px; }
+    .table th, .table td { vertical-align: middle; }
+    /* TOAST */
+    #toastContainer {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 9999;
+      max-width: 360px;
+    }
+    .toast {
+      background: #1e2a38;
+      color: white;
+      padding: 16px 20px;
+      border-radius: 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      animation: slideIn 0.4s ease;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .toast strong { color: #4ade80; font-size: 15px; }
+    .toast small { opacity: 0.9; font-size: 13px; }
+    .toast button {
+      background: #0d6efd; color: white; border: none;
+      padding: 6px 12px; border-radius: 6px; font-size: 13px;
+      margin-left: 10px; cursor: pointer;
+    }
+    .toast .close {
+      background: none; color: #aaa; font-size: 20px;
+      font-weight: bold; margin-left: 12px; cursor: pointer;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(120%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    .badge-success {
+      background-color: #28a745 !important;
+      color: white;
+    }
+    .badge-warning {
+      background-color: #ffc107 !important;
+      color: black;
+    }
+  </style>
+</head>
+<body>
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <h4>Transporter: <span id="transporterName"></span></h4>
+    <button id="navProfile" class="active">Profile</button>
+    <button id="navRates">Set Rates</button>
+    <button id="navRequests">Requests</button>
+    <button id="navRatings">Ratings</button>
+    <hr class="bg-light">
+    <div class="bottom-buttons">
+      <button id="logoutBtn" class="btn btn-sm btn-outline-light">Logout</button>
+    </div>
+  </div>
+  <!-- Main Content -->
+  <div class="main-content">
+    <div id="toastContainer"></div>
+    <!-- Profile -->
+    <div id="sectionProfile">
+      <h3>Profile & Availability</h3>
+      <div class="card p-3">
+        <form id="profileForm">
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="availability" name="availability">
+            <label class="form-check-label" for="availability">Available for transport</label>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3"><label>Lorries</label><input type="number" class="form-control" name="numLorry" min="0"></div>
+            <div class="col-md-6 mb-3"><label>Vans</label><input type="number" class="form-control" name="numVan" min="0"></div>
+            <div class="col-md-6 mb-3"><label>Pickups</label><input type="number" class="form-control" name="numPickup" min="0"></div>
+            <div class="col-md-6 mb-3"><label>Tractors</label><input type="number" class="form-control" name="numTractor" min="0"></div>
+          </div>
+          <button type="submit" class="btn btn-primary">Save Profile</button>
+          <div id="profileMsg" class="mt-2 text-success"></div>
+        </form>
+      </div>
+      <div class="mb-3 mt-4">
+        <label class="form-label">Your Location</label>
+        <div class="row">
+          <div class="col-md-6"><input type="number" step="any" class="form-control" id="manualLat" placeholder="Latitude"></div>
+          <div class="col-md-6"><input type="number" step="any" class="form-control" id="manualLng" placeholder="Longitude"></div>
+        </div>
+        <button type="button" id="useMyLocation" class="btn btn-sm btn-outline-primary mt-2">Use Current Location</button>
+        <button type="button" id="updateLocation" class="btn btn-sm btn-secondary mt-2 ms-2">Update</button>
+        <div id="locationDisplay" class="text-muted mt-1"></div>
+        <input type="hidden" id="latInput"><input type="hidden" id="lngInput">
+      </div>
+    </div>
+    <!-- Rates -->
+    <div id="sectionRates" style="display:none;">
+      <h3>Set Transport Rates</h3>
+      <div class="card p-3">
+        <form id="rateForm" class="row g-2 align-items-center">
+          <div class="col-auto"><label>Vehicle</label>
+            <select class="form-select" name="vehicle_type" required>
+              <option value="">Select</option>
+              <option value="Lorry">Lorry(rate per km)</option>
+              <option value="Van">Van(rate per km)</option>
+              <option value="Pickup">Pickup(rate per km)</option>
+              <option value="Tractor">Tractor(rate per km)</option>
+            </select>
+          </div>
+          <div class="col-auto"><label>Rate (KES/km)</label>
+            <input type="number" step="0.01" class="form-control" name="rate_per_km" required>
+          </div>
+          <div class="col-auto"><button type="submit" class="btn btn-primary mt-4">Save</button></div>
+        </form>
+        <div class="mt-3" id="ratesTable">(loading...)</div>
+      </div>
+    </div>
+    <!-- Requests -->
+    <div id="sectionRequests" style="display:none;">
+      <h3>Incoming Requests</h3>
+      <div class="card p-3"><div id="requestsArea">(loading...)</div></div>
+    </div>
+    <!-- Ratings -->
+    <div id="sectionRatings" style="display:none;">
+      <h3>Ratings & Reviews</h3>
+      <div class="card p-3"><div id="ratingsArea">(loading...)</div></div>
+    </div>
+  </div>
+  <!-- SCRIPTS -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // === SOCKET.IO ===
+    let socket;
+    fetch('/session-user')
+      .then(r => {
+        if (!r.ok) {
+          throw new Error(`HTTP error! Status: ${r.status}`);
+        }
+        return r.json();
+      })
+      .then(data => {
+        if (!data.loggedIn || data.user.role !== 'transporter') {
+          location.href = '/login.html';
+          return;  // Stop execution
+        }
+        document.getElementById('transporterName').textContent = data.user.name || 'Unknown';
+        socket = io({ withCredentials: true, transports: ['websocket'] });
+        socket.on('connect', () => console.log('Socket connected'));
+        socket.on('new-request', req => { showToast(req); loadRequests(); });
+        socket.on('payment-success', (data) => { 
+          const badge = document.getElementById(`payment-status-${data.requestId}`);
+          if (badge) {
+            badge.textContent = "Paid";
+            badge.className = "badge badge-success";
+          }
+          showToast(`Payment confirmed! Receipt: ${data.receipt}`);
+        });
+        // === INITIAL LOAD ===
+        loadTransporterProfile();
+        showSection('profile');
+        loadRates();
+        loadRequests();
+        loadRatings();
+      })
+      .catch(err => {
+        console.error('Session check failed:', err);
+        location.href = '/login.html';  // Force redirect on error
+      });
+    // === TOAST ===
+    function showToast(req) {
+      const t = document.createElement('div');
+      t.className = 'toast';
+      t.innerHTML = `
+        <div><strong>NEW REQUEST</strong><br>
+          <small>${req.farmer_name} • ${req.produce}</small><br>
+          <small>${req.pickup_location} → ${req.destination}</small>
+        </div>
+        <div>
+          <button onclick="goToRequest(${req.id})">View</button>
+          <button class="close" onclick="this.parentElement.parentElement.remove()">×</button>
+        </div>`;
+      document.getElementById('toastContainer').appendChild(t);
+      setTimeout(() => { t.style.animation = 'slideIn 0.4s ease reverse'; t.addEventListener('animationend', () => t.remove()); }, 7500);
+    }
+    function goToRequest(id) {
+      showSection('requests');
+      setTimeout(() => document.querySelector(`[onclick*="${id}"]`)?.closest('.border')?.scrollIntoView({ behavior: 'smooth' }), 300);
+    }
+    // === NAVIGATION ===
+    const sections = { profile: document.getElementById('sectionProfile'), rates: document.getElementById('sectionRates'), requests: document.getElementById('sectionRequests'), ratings: document.getElementById('sectionRatings') };
+    const navBtns = { profile: document.getElementById('navProfile'), rates: document.getElementById('navRates'), requests: document.getElementById('navRequests'), ratings: document.getElementById('navRatings') };
+    function showSection(k) {
+      Object.values(sections).forEach(s => s.style.display = 'none');
+      sections[k].style.display = 'block';
+      Object.values(navBtns).forEach(b => b.classList.remove('active'));
+      navBtns[k].classList.add('active');
+      if (k === 'rates') loadRates();
+      if (k === 'requests') loadRequests();
+      if (k === 'ratings') loadRatings();
+      if (k === 'profile') loadTransporterProfile();
+    }
+    Object.keys(navBtns).forEach(k => navBtns[k].onclick = () => showSection(k));
+    document.getElementById('logoutBtn').onclick = () => fetch('/logout', { credentials: 'same-origin' }).then(() => location.href = '/index.html');
+    // === PROFILE ===
+    async function loadTransporterProfile() {
+      const msg = document.getElementById('profileMsg');
+      msg.textContent = 'Loading...'; msg.className = 'text-info';
+      const res = await fetch('/api/transporter/profile', { credentials: 'same-origin' });
+      if (!res.ok) { msg.textContent = 'Session expired'; msg.classList.add('text-danger'); setTimeout(() => location.href = '/index.html', 2000); return; }
+      const d = await res.json();
+      document.getElementById('availability').checked = d.availability === 1;
+      document.querySelector('input[name="numLorry"]').value = d.num_lorry || 0;
+      document.querySelector('input[name="numVan"]').value = d.num_van || 0;
+      document.querySelector('input[name="numPickup"]').value = d.num_pickup || 0;
+      document.querySelector('input[name="numTractor"]').value = d.num_tractor || 0;
+      if (d.lat && d.lng) {
+        document.getElementById('manualLat').value = d.lat;
+        document.getElementById('manualLng').value = d.lng;
+        document.getElementById('latInput').value = d.lat;
+        document.getElementById('lngInput').value = d.lng;
+        document.getElementById('locationDisplay').textContent = `Saved: ${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}`;
+      }
+      msg.textContent = 'Loaded!'; msg.classList.add('text-success'); setTimeout(() => msg.textContent = '', 3000);
+    }
+    document.getElementById('profileForm').onsubmit = async e => {
+      e.preventDefault();
+      const payload = Object.fromEntries(new FormData(e.target).entries());
+      payload.availability = e.target.availability.checked;
+      const lat = document.getElementById('latInput').value, lng = document.getElementById('lngInput').value;
+      if (lat) payload.lat = lat; if (lng) payload.lng = lng;
+      const res = await fetch('/api/transporter/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(payload) });
+      const msg = document.getElementById('profileMsg');
+      if (!res.ok) { 
+        msg.textContent = 'Failed to save profile'; 
+        msg.classList.add('text-danger'); 
+        return;
+      }
+      const d = await res.json();
+      msg.textContent = d.message || 'Saved!'; 
+      msg.classList.add('text-success');
+      setTimeout(() => msg.textContent = '', 3000);
+      loadTransporterProfile();
+    };
+    // === RATES ===
+    document.getElementById('rateForm').onsubmit = async e => {
+      e.preventDefault();
+      const payload = Object.fromEntries(new FormData(e.target).entries());
+      const res = await fetch('/api/transporter/rate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(payload) });
+      const d = await res.json(); alert(d.message); loadRates();
+    };
+    async function loadRates() {
+      const res = await fetch('/api/transporter/rates', { credentials: 'same-origin' });
+      if (!res.ok) {
+        document.getElementById('ratesTable').innerHTML = '<div class="text-danger">Failed to load rates</div>';
+        return;
+      }
+      const d = await res.json().catch(() => []);
+      const div = document.getElementById('ratesTable');
+      div.innerHTML = d.length === 0
+        ? '<div class="text-muted">No rates set yet.</div>'
+        : `<table class="table table-sm table-bordered">
+            <thead><tr><th>Vehicle</th><th>Rate (KES/km)</th></tr></thead>
+            <tbody>${d.map(r => `<tr><td>${r.vehicle_type}</td><td>${r.rate_per_km}</td></tr>`).join('')}</tbody>
+          </table>`;
+    }
+    // === REQUESTS ===
+    async function loadRequests() {
+      const res = await fetch('/transporter/requests', { credentials: 'same-origin' });
+      if (!res.ok) {
+        document.getElementById('requestsArea').innerHTML = '<div class="text-danger">Failed to load requests</div>';
+        return;
+      }
+      const d = await res.json().catch(() => []);
+      const area = document.getElementById('requestsArea');
+      area.innerHTML = d.length === 0
+        ? '<div class="text-muted">No requests yet.</div>'
+        : d.map(r => `
+          <div class="border p-3 mb-2 rounded">
+            <strong>${r.farmer_name}</strong> — ${r.produce} (${r.vehicleType})
+            <small>${r.pickup_location} → ${r.destination}</small>
+            <span class="badge bg-info text-dark me-2">Status: ${r.status}</span>
+            <!-- PAYMENT BADGE HERE -->
+            <span id="payment-status-${r.id}" class="badge ${r.payment_status === 'Paid' ? 'badge-success' : 'badge-warning'}">
+              ${r.payment_status || 'Pending'}
+            </span>
+            <div class="mt-2">
+              ${r.status === 'Pending' ? `<button class="btn btn-success btn-sm" onclick="respond(${r.id}, 'Accepted')">Accept</button>
+                <button class="btn btn-danger btn-sm" onclick="respond(${r.id}, 'Rejected')">Reject</button>
+                <button class="btn btn-warning btn-sm" onclick="negotiate(${r.id})">Negotiate</button>` : ''}
+              ${r.status === 'Accepted' && r.payment_status === 'Paid' ? `<button class="btn btn-primary btn-sm" onclick="updateStatus(${r.id}, 'Picked')">Mark Picked</button>` : ''}
+              ${r.status === 'Picked' ? `<button class="btn btn-primary btn-sm" onclick="updateStatus(${r.id}, 'En Route')">Mark En Route</button>` : ''}
+              ${r.status === 'En Route' ? `<button class="btn btn-success btn-sm" onclick="updateStatus(${r.id}, 'Delivered')">Mark Delivered</button>` : ''}
+            </div>
+          </div>`).join('');
+    }
+    // === RESPOND / NEGOTIATE ===
+    async function respond(id, action) {
+      const res = await fetch(`/api/transporter/respond/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ action })
+      });
+      const d = await res.json();
+      alert(d.message);
+      loadRequests();
+    }
+    async function negotiate(id) {
+      const rate = prompt("Proposed rate (KES/km):"); if (!rate) return;
+      const res = await fetch(`/api/transporter/respond/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ action: 'Negotiating', proposed_rate: rate }) });
+      const d = await res.json(); alert(d.message); loadRequests();
+    }
+    // === GPS TRACKING ===
+    let trackingInterval = null, currentRequestId = null;
+    function startGPSTracking(id) {
+      if (!navigator.geolocation) return alert("GPS not supported");
+      currentRequestId = id;
+      socket.emit('start-tracking', id);
+      trackingInterval = setInterval(() => {
+        navigator.geolocation.getCurrentPosition(
+          pos => socket.emit('update-location', { requestId: id, lat: pos.coords.latitude, lng: pos.coords.longitude }),
+          err => console.error(err),
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
+      }, 10000);
+    }
+    function stopGPSTracking() {
+      if (trackingInterval) clearInterval(trackingInterval);
+      if (currentRequestId) { socket.emit('stop-tracking', currentRequestId); currentRequestId = null; }
+    }
+    function updateStatus(id, status) {
+      fetch(`/api/transporter/update-status/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ status })
+      }).then(() => {
+        loadRequests();
+        if (status === 'Picked') { startGPSTracking(id); alert('GPS Tracking Started!'); }
+        if (status === 'Delivered') { stopGPSTracking(); alert('Tracking Stopped'); }
+      }).catch(err => alert('Failed to update status'));
+    }
+    // === LOCATION BUTTONS ===
+    document.getElementById('useMyLocation').onclick = () => {
+      navigator.geolocation.getCurrentPosition(pos => {
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        document.getElementById('manualLat').value = lat;
+        document.getElementById('manualLng').value = lng;
+        document.getElementById('latInput').value = lat;
+        document.getElementById('lngInput').value = lng;
+        document.getElementById('locationDisplay').textContent = `Updated: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        alert('Location captured!');
+      }, err => alert(err.message), { enableHighAccuracy: true });
+    };
+    document.getElementById('updateLocation').onclick = () => {
+      const lat = parseFloat(document.getElementById('manualLat').value);
+      const lng = parseFloat(document.getElementById('manualLng').value);
+      if (isNaN(lat) || isNaN(lng)) return alert('Invalid coordinates');
+      document.getElementById('latInput').value = lat;
+      document.getElementById('lngInput').value = lng;
+      document.getElementById('locationDisplay').textContent = `Manual: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+      alert('Location updated!');
+    };
+    // === RATINGS ===
+    async function loadRatings() {
+      const res = await fetch('/api/transporter/ratings', { credentials: 'same-origin' });
+      if (!res.ok) {
+        document.getElementById('ratingsArea').innerHTML = '<div class="text-danger">Failed to load ratings</div>';
+        return;
+      }
+      const d = await res.json().catch(() => []);
+      const area = document.getElementById('ratingsArea');
+      area.innerHTML = d.length === 0
+        ? '<div class="text-muted">No ratings yet.</div>'
+        : d.map(r => `
+          <div class="border p-2 rounded mb-2">
+            <strong>${r.farmer_name}</strong> — ${r.produce}<br>
+            <span>${'⭐'.repeat(r.rating)}</span><br>
+            <em>${r.feedback || ''}</em><br>
+            <small class="text-muted">${new Date(r.created_at).toLocaleString()}</small>
+          </div>`).join('');
+    }
+  </script>
+</body>
+</html>
