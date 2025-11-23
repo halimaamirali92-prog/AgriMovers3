@@ -631,28 +631,94 @@
     });
 
     function initTrackingMap(requestId) {
-      const mapEl = document.getElementById(`map-${requestId}`);
-      if (!mapEl || farmerMaps[requestId]) return;
+  const mapEl = document.getElementById(`map-${requestId}`);
+  if (!mapEl || farmerMaps[requestId]) return;
 
-      const map = L.map(mapEl).setView([-1.2921, 36.8219], 12);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
-      }).addTo(map);
+  const req = reqData[requestId];
+  if (!req) {
+    console.error("Request data not loaded yet for ID:", requestId);
+    return;
+  }
 
-      // Truck icon
-      const truckIcon = L.icon({
-        iconUrl: 'https://cdn-icons-png.flaticon.com/512/2344/2344105.png',
-        iconSize: [40, 40],
-        iconAnchor: [20, 40]
-      });
+  // REAL COORDINATES FROM DATABASE
+  const pickupLat = parseFloat(req.pickup_lat);
+  const pickupLng = parseFloat(req.pickup_lng);
+  const destLat = parseFloat(req.dest_lat);
+  const destLng = parseFloat(req.dest_lng);
 
-      const marker = L.marker([-1.2921, 36.8219], { icon: truckIcon }).addTo(map);
-      const polyline = L.polyline([], { color: '#0d6efd', weight: 6, opacity: 0.8 }).addTo(map);
+  if (!pickupLat || !pickupLng) {
+    mapEl.innerHTML = "<div class='text-center p-3 text-danger'>GPS coordinates missing</div>";
+    return;
+  }
 
-      farmerMaps[requestId] = { map, marker, polyline, path: [], accuracyCircle: null, routeControl: null };
+  const map = L.map(mapEl).setView([pickupLat, pickupLng], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-      socket.emit('join-tracking', requestId);
-    }
+  // Icons
+  const truckIcon = L.icon({
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/2344/2344105.png',
+    iconSize: [45, 45],
+    iconAnchor: [22, 45]
+  });
+
+  const pickupIcon = L.icon({
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
+    iconSize: [35, 35],
+    iconAnchor: [17, 35]
+  });
+
+  const destIcon = L.icon({
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/9187/9187644.png',
+    iconSize: [35, 35],
+    iconAnchor: [17, 35]
+  });
+
+  // Markers
+  L.marker([pickupLat, pickupLng], { icon: pickupIcon }).addTo(map)
+    .bindPopup(`<b>Pickup:</b> ${req.pickup_location}`).openPopup();
+
+  if (destLat && destLng) {
+    L.marker([destLat, destLng], { icon: destIcon }).addTo(map)
+      .bindPopup(`<b>Destination:</b> ${req.destination}`);
+  }
+
+  // Truck starts at pickup
+  const truckMarker = L.marker([pickupLat, pickupLng], { icon: truckIcon }).addTo(map)
+    .bindPopup("<b>Transporter Truck</b>").openPopup();
+
+  // Draw real road route
+  let routeControl = null;
+  if (destLat && destLng) {
+    routeControl = L.Routing.control({
+      waypoints: [
+        L.latLng(pickupLat, pickupLng),
+        L.latLng(destLat, destLng)
+      ],
+      routeWhileDragging: false,
+      show: false,
+      addWaypoints: false,
+      createMarker: () => null,
+      lineOptions: { styles: [{ color: '#0d6efd', weight: 6, opacity: 0.7 }] }
+    }).addTo(map);
+
+    map.fitBounds(routeControl.getBounds().pad(0.1));
+  }
+
+  // Trail line
+  const trail = L.polyline([], { color: '#198754', weight: 4, opacity: 0.8 }).addTo(map);
+
+  farmerMaps[requestId] = {
+    map,
+    truckMarker,
+    trail,
+    routeControl,
+    path: [[pickupLat, pickupLng]]
+  };
+
+  // NOW JOIN THE ROOM (after map is ready)
+  socket.emit('join-tracking', requestId);
+  console.log("Joined tracking room:", requestId);
+}
 
     document.addEventListener('click', async e => {
       if (!e.target.classList.contains('submit-rating')) return;

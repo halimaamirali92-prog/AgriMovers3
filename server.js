@@ -1150,6 +1150,5 @@ app.get("/", (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
-  console.log(`AgriMovers3 is LIVE on port ${PORT}`);
-  console.log(`Visit: https://agrimovers3.onrender.com`);
+  console.log(`AgriMovers3 is LIVE → https://agrimovers3.onrender.com`);
 });
