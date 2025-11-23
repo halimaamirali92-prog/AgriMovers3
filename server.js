@@ -86,9 +86,6 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, "public")));
 app.use(sessionMiddleware); // ONLY ONCE
 // MySQL connection
-// ==== FINAL WORKING DATABASE CONNECTION FOR RENDER + AIVEN (NO FILES NEEDED) ====
-const mysql = require("mysql2");
-
 const db = mysql.createPool(
   process.env.DATABASE_URL
     ? {
