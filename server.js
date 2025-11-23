@@ -85,12 +85,14 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, "public")));
 app.use(sessionMiddleware); // ONLY ONCE
 // MySQL connection
-const db = mysql.createConnection({
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "agrimovers3",
-});
+const db = mysql.createConnection(
+  process.env.DATABASE_URL || {
+    host: "localhost",
+    user: "root",
+    password: "",
+    database: "agrimovers3",
+  }
+);
 db.connect((err) => {
   if (err) {
     console.error("Database connection failed:", err.message);
