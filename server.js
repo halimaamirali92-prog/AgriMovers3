@@ -20,7 +20,7 @@ const MPESA_ENVIRONMENT = "sandbox";
 let mpesaAccessToken = null;
 let tokenExpiry = 0;
 const app = express();
-const PORT = 3000;
+app.set('trust proxy', 1);
 // === GET MPESA ACCESS TOKEN ===
 async function getMpesaToken() {
   if (mpesaAccessToken && Date.now() < tokenExpiry) {
@@ -1126,7 +1126,10 @@ app.get("/", (req, res) => {
   res.redirect("/index.html");
 });
 
-// Start server
+// === START THE SERVER (MUST USE 'server' because of Socket.IO) ===
+const PORT = process.env.PORT || 3000;
+
 server.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`AgriMovers3 is LIVE on port ${PORT}`);
+  console.log(`Visit: https://agrimovers3.onrender.com`);
 });
