@@ -86,22 +86,27 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, "public")));
 app.use(sessionMiddleware); // ONLY ONCE
 // MySQL connection
-// === WORKING MYSQL CONNECTION FOR RENDER + AIVEN (NO ca.pem needed) ===
+// ==== FINAL WORKING DATABASE CONNECTION FOR RENDER + AIVEN (NO FILES NEEDED) ====
+const mysql = require("mysql2");
+
 const db = mysql.createPool(
   process.env.DATABASE_URL
     ? {
         connectionLimit: 10,
-        ...require("url").parse(process.env.DATABASE_URL, true).query,
-        uri: process.env.DATABASE_URL,
-        ssl: {
-          rejectUnauthorized: true,
-        },
+        host: new URL(process.env.DATABASE_URL).hostname,
+        port: new URL(process.env.DATABASE_URL).port,
+        user: new URL(process.env.DATABASE_URL).username,
+        password: new URL(process.env.DATABASE_URL).password,
+        database: new URL(process.env.DATABASE_URL).pathname.slice(1),
+        ssl: { rejectUnauthorized: true },
+        waitForConnections: true,
+        queueLimit: 0
       }
     : {
         host: "localhost",
         user: "root",
         password: "",
-        database: "agrimovers3",
+        database: "agrimovers3"
       }
 );
 
@@ -111,7 +116,7 @@ db.getConnection((err) => {
     console.error("DATABASE CONNECTION FAILED:", err.message);
     process.exit(1);
   } else {
-    console.log("Connected to Aiven MySQL successfully!");
+    console.log("Successfully connected to Aiven MySQL on Render!");
   }
 });
 /* Helpers */
