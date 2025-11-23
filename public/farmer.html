@@ -9,6 +9,9 @@
   <!-- LEAFLET (OpenStreetMap) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- LEAFLET ROUTING MACHINE -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+  <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
   <style>
     /* --- Global Layout --- */
     body {
@@ -60,7 +63,7 @@
     .sidebar button.active {
       background-color: #0d6efd;
       color: #fff;
-      box-shadow: 0 4px 10px rgba(13, 110, 253, 0.3);
+      box-shadow: 0 4px 10px rgba(13, 110, 0.3);
     }
     .bottom-buttons {
       margin-top: auto;
@@ -145,6 +148,10 @@
       .sidebar button { font-size: 13px; padding: 10px; }
       .main-content { padding: 20px; }
     }
+    .leaflet-popup-content {
+      font-family: 'Segoe UI', sans-serif !important;
+      margin: 10px !important;
+    }
   </style>
 </head>
 <body>
@@ -185,15 +192,15 @@
           <div class="mb-3"><label class="form-label">Phone</label><input type="text" class="form-control" name="phone"></div>
           <div class="mb-3"><label class="form-label">Location</label><input type="text" class="form-control" name="location"></div>
           <div class="mb-3">
-            <label class="form-label">Latitude(optional - auto-filled from GPS)</label>
+            <label class="form-label">Latitude (optional - auto-filled from GPS)</label>
             <input type="text" class="form-control" name="lat" placeholder="e.g. -1.2921">
           </div>
           <div class="mb-3">
-            <label class="form-label">Longitude(optional - auto-filled from GPS)</label>
+            <label class="form-label">Longitude (optional - auto-filled from GPS)</label>
             <input type="text" class="form-control" name="lng" placeholder="e.g. 36.8219">
           </div>
           <div class="mb-3">
-            <button type="button" id="autoFillGps" class="btn btn-info btn-sm">Fill from GPS</button>
+            <button type="button" id="autoFillGps" class="btn btn-info btn-sm">Fill from GPS & Save</button>
           </div>
           <div class="mb-3"><label class="form-label">Profile Image</label><input type="file" class="form-control" name="profile_image" accept="image/*"></div>
           <button type="submit" class="btn btn-primary">Save Changes</button>
@@ -214,8 +221,29 @@
         <form id="requestForm">
           <div class="mb-3"><label class="form-label">Produce</label><input type="text" class="form-control" name="produce" required></div>
           <div class="mb-3"><label class="form-label">Quantity (tons)</label><input type="number" class="form-control" name="quantity" required></div>
-          <div class="mb-3"><label class="form-label">Pickup Location</label><input type="text" class="form-control" name="pickup_location" required></div>
-          <div class="mb-3"><label class="form-label">Destination</label><input type="text" class="form-control" name="destination" required></div>
+          <div class="mb-3">
+            <label class="form-label">Pickup Location (address)</label><input type="text" class="form-control" name="pickup_location" required>
+            <div class="row mt-2">
+              <div class="col-6">
+                <input type="number" step="any" class="form-control" name="pickup_lat" placeholder="Pickup Lat (auto-fill below)">
+              </div>
+              <div class="col-6">
+                <input type="number" step="any" class="form-control" name="pickup_lng" placeholder="Pickup Lng (auto-fill below)">
+              </div>
+            </div>
+            <button type="button" id="pickupGpsBtn" class="btn btn-info btn-sm mt-2">Use My Current Location</button>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Destination (address)</label><input type="text" class="form-control" name="destination" required>
+            <div class="row mt-2">
+              <div class="col-6">
+                <input type="number" step="any" class="form-control" name="dest_lat" placeholder="Dest Lat (optional for real map)">
+              </div>
+              <div class="col-6">
+                <input type="number" step="any" class="form-control" name="dest_lng" placeholder="Dest Lng (optional for real map)">
+              </div>
+            </div>
+          </div>
           <div class="mb-3"><label class="form-label">Distance (km)</label><input type="number" class="form-control" id="distance" name="distance_km" required></div>
           <div class="mb-3">
             <label class="form-label">Vehicle Type</label>
@@ -261,7 +289,7 @@
       transporters: document.getElementById('sectionTransporters'),
       requests: document.getElementById('sectionRequests'),
       myRequests: document.getElementById('sectionMyRequests'),
-      disputes: document.getElementById('sectionDisputes')  // ← comma added
+      disputes: document.getElementById('sectionDisputes')
     };
 
     const navBtns = {
@@ -269,23 +297,24 @@
       transporters: document.getElementById('navTransporters'),
       requests: document.getElementById('navRequests'),
       myRequests: document.getElementById('navMyRequests'),
-      disputes: document.getElementById('navDisputes')       // ← comma added
+      disputes: document.getElementById('navDisputes')
     };
     function showSection(k) {
       Object.values(sections).forEach(s => s.style.display = 'none');
       sections[k].style.display = 'block';
       Object.values(navBtns).forEach(b => b.classList.remove('active'));
       navBtns[k].classList.add('active');
-      if (k === 'transporters') loadTransporters();
+      if (k === 'transporters') loadTransportersWithBestPossibleLocation();
       if (k === 'profile') loadProfileData();
       if (k === 'myRequests') loadMyRequests();
-      if (k === 'disputes') loadMyDisputes()
+      if (k === 'disputes') loadMyDisputes();
     }
     Object.keys(navBtns).forEach(k => navBtns[k].onclick = () => showSection(k));
     document.getElementById('logoutBtn').onclick = async () => {
       await fetch('/logout', { method: 'GET', credentials: 'same-origin' });
       location.href = 'index.html';
     };
+
     // === AUTH & PROFILE ===
     async function ensureFarmer() {
       const r = await fetch('/session-user', { credentials: 'same-origin' });
@@ -295,53 +324,81 @@
         location.href = 'index.html';
       }
     }
+
     async function loadProfileData() {
       const r = await fetch('/api/farmer/profile', { credentials: 'same-origin' });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) return alert('Error loading profile');
+
       document.getElementById('profileName').textContent = d.fullname || '';
       document.getElementById('profileEmailSmall').textContent = d.email || '';
       document.getElementById('profilePhone').textContent = d.phone || '-';
-      document.getElementById('profileLocation').textContent = d.location || '-';
-      if (d.profile_image_url) document.getElementById('profilePhoto').src = d.profile_image_url;
+
       if (d.lat && d.lng) {
-      document.getElementById('profileLocation').innerHTML = 
-        (d.location || 'Not set') + 
-        `<br><small class="text-success"><strong>GPS:</strong> ${parseFloat(d.lat).toFixed(6)}, ${parseFloat(d.lng).toFixed(6)}</small>`;
-       } else {
-      document.getElementById('profileLocation').textContent = d.location || '-';
+        document.getElementById('profileLocation').innerHTML = 
+          (d.location || 'Not set') + 
+          `<br><small class="text-success"><strong>GPS:</strong> ${parseFloat(d.lat).toFixed(6)}, ${parseFloat(d.lng).toFixed(6)}</small>`;
+      } else {
+        document.getElementById('profileLocation').textContent = d.location || '-';
       }
-      return d; // Return data for pre-filling form
+
+      if (d.profile_image_url) document.getElementById('profilePhoto').src = d.profile_image_url;
+
+      return d;
     }
+
     document.getElementById('editProfileBtn').onclick = async () => {
-      const profileData = await loadProfileData(); // Reload to get latest
-      document.querySelector('input[name="fullname"]').value = profileData.fullname || '';
-      document.querySelector('input[name="phone"]').value = profileData.phone || '';
-      document.querySelector('input[name="location"]').value = profileData.location || '';
-      document.querySelector('input[name="lat"]').value = profileData.lat ? parseFloat(profileData.lat).toFixed(6) : '';
-      document.querySelector('input[name="lng"]').value = profileData.lng ? parseFloat(profileData.lng).toFixed(6) : '';
+      const data = await loadProfileData();
+      document.querySelector('input[name="fullname"]').value = data.fullname || '';
+      document.querySelector('input[name="phone"]').value = data.phone || '';
+      document.querySelector('input[name="location"]').value = data.location || '';
+      document.querySelector('input[name="lat"]').value = data.lat ? parseFloat(data.lat).toFixed(6) : '';
+      document.querySelector('input[name="lng"]').value = data.lng ? parseFloat(data.lng).toFixed(6) : '';
       document.getElementById('editProfileForm').style.display = 'block';
     };
+
     document.getElementById('cancelEdit').onclick = () => document.getElementById('editProfileForm').style.display = 'none';
+
     document.getElementById('profileForm').onsubmit = async e => {
       e.preventDefault();
       const fd = new FormData(e.target);
       const r = await fetch('/api/farmer/update-profile', { method: 'POST', credentials: 'same-origin', body: fd });
       const d = await r.json();
       const msg = document.getElementById('updateMsg');
-      if (!r.ok) { msg.textContent = d.message || 'Error'; msg.classList.add('text-danger'); }
+      if (!r.ok) { 
+        msg.textContent = d.message || 'Error'; 
+        msg.classList.add('text-danger'); 
+      }
       else {
-        msg.textContent = 'Profile updated'; msg.classList.remove('text-danger');
-        loadProfileData();
-        setTimeout(() => { msg.textContent = ''; document.getElementById('editProfileForm').style.display = 'none'; }, 2000);
+        msg.textContent = 'Profile updated successfully'; 
+        msg.classList.remove('text-danger');
+        const profileData = await loadProfileData();
+        setTimeout(() => { 
+          msg.textContent = ''; 
+          document.getElementById('editProfileForm').style.display = 'none'; 
+        }, 3000);
+        // If currently on transporters tab, refresh distances with new coordinates
+        if (sections.transporters.style.display === 'block') {
+          loadTransporters(profileData.lat, profileData.lng);
+          showToast("Coordinates updated → distances refreshed!");
+        }
       }
     };
+
     document.getElementById('autoFillGps').onclick = () => {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
-          pos => {
-            document.querySelector('input[name="lat"]').value = pos.coords.latitude.toFixed(6);
-            document.querySelector('input[name="lng"]').value = pos.coords.longitude.toFixed(6);
+          async pos => {
+            const lat = pos.coords.latitude.toFixed(6);
+            const lng = pos.coords.longitude.toFixed(6);
+            document.querySelector('input[name="lat"]').value = lat;
+            document.querySelector('input[name="lng"]').value = lng;
+            // Auto-save GPS when clicked
+            const fd = new FormData();
+            fd.append('lat', lat);
+            fd.append('lng', lng);
+            await fetch('/api/farmer/update-profile', { method: 'POST', body: fd, credentials: 'same-origin' });
+            showToast("GPS location saved automatically saved!");
           },
           () => alert('Unable to get GPS location.')
         );
@@ -349,45 +406,86 @@
         alert('Geolocation not supported.');
       }
     };
-    //Load Disputes
-async function loadMyDisputes() {
-  const area = document.getElementById('disputesArea');
-  area.innerHTML = 'Loading...';
-  
-  try {
-    const r = await fetch('/api/farmer/disputes', { credentials: 'same-origin' });
-    const disputes = await r.json();
-    
-    if (!r.ok || disputes.length === 0) {
-      area.innerHTML = '<div class="text-muted">No disputes found.</div>';
-      return;
+
+    //Load Disputes (unchanged)
+    async function loadMyDisputes() {
+      const area = document.getElementById('disputesArea');
+      area.innerHTML = 'Loading...';
+      
+      try {
+        const r = await fetch('/api/farmer/disputes', { credentials: 'same-origin' });
+        const disputes = await r.json();
+        
+        if (!r.ok || disputes.length === 0) {
+          area.innerHTML = '<div class="text-muted">No disputes found.</div>';
+          return;
+        }
+        
+        area.innerHTML = disputes.map(d => `
+          <div class="mb-3 p-3 border rounded ${d.status === 'Resolved' ? 'border-success' : 'border-warning'}">
+            <div><strong>Dispute #${d.id}</strong> vs <strong>${d.transporter_name || 'Unknown'}</strong></div>
+            <div class="small mt-1">${d.description}</div>
+            <div class="mt-2">
+              <span class="badge ${d.status === 'Resolved' ? 'bg-success' : 'bg-warning'}">${d.status}</span>
+              ${d.status === 'Resolved' && d.admin_notes ? `<br><small><em>Admin notes: ${d.admin_notes}</em></small>` : ''}
+            </div>
+            <div class="text-muted small mt-2">Created: ${new Date(d.created_at).toLocaleDateString()}</div>
+          </div>
+        `).join('');
+      } catch (err) {
+        area.innerHTML = '<div class="text-danger">Error loading disputes</div>';
+      }
     }
-    
-    area.innerHTML = disputes.map(d => `
-      <div class="mb-3 p-3 border rounded ${d.status === 'Resolved' ? 'border-success' : 'border-warning'}">
-        <div><strong>Dispute #${d.id}</strong> vs <strong>${d.transporter_name || 'Unknown'}</strong></div>
-        <div class="small mt-1">${d.description}</div>
-        <div class="mt-2">
-          <span class="badge ${d.status === 'Resolved' ? 'bg-success' : 'bg-warning'}">${d.status}</span>
-          ${d.status === 'Resolved' && d.admin_notes ? `<br><small><em>Admin notes: ${d.admin_notes}</em></small>` : ''}
-        </div>
-        <div class="text-muted small mt-2">Created: ${new Date(d.created_at).toLocaleDateString()}</div>
-      </div>
-    `).join('');
-  } catch (err) {
-    area.innerHTML = '<div class="text-danger">Error loading disputes</div>';
-  }
-}
-    // === TRANSPORTERS ===
-    let farmerLat = null, farmerLng = null;
-    let savedLat = null, savedLng = null;
+
+    // === TRANSPORTERS - NOW PRIORITIZES SAVED COORDINATES ===
+    async function loadTransportersWithBestPossibleLocation() {
+      // FIRST: Try to get saved location from profile
+      const profileRes = await fetch('/api/farmer/profile', { credentials: 'same-origin' });
+      const profile = await profileRes.json();
+
+      if (profile.lat && profile.lng) {
+        loadTransporters(profile.lat, profile.lng);
+        showToast("Using your saved location for accurate distances");
+        return;
+      }
+
+      // NO SAVED LOCATION → ask for GPS (and save it)
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          async (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+
+            const fd = new FormData();
+            fd.append('lat', lat);
+            fd.append('lng', lng);
+            await fetch('/api/farmer/update-profile', { method: 'POST', body: fd, credentials: 'same-origin' });
+
+            loadTransporters(lat, lng);
+            showToast("Location saved & transporters loaded");
+          },
+          () => {
+            loadTransporters();
+            showToast("Location access denied — showing all transporters");
+          },
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
+      } else {
+        loadTransporters();
+        showToast("Geolocation not supported — showing all transporters");
+      }
+    }
+
     async function loadTransporters(lat = null, lng = null) {
       let url = '/api/transporters-with-rates';
-      if (lat && lng) { url += `?lat=${lat}&lng=${lng}`; farmerLat = lat; farmerLng = lng; }
+      if (lat && lng) url += `?lat=${lat}&lng=${lng}`;
       const r = await fetch(url, { credentials: 'same-origin' });
       const data = await r.json().catch(() => []);
       const div = document.getElementById('transportersTable');
-      if (!r.ok || !data.length) { div.innerHTML = '<div class="text-muted">No transporters found nearby.</div>'; return; }
+      if (!r.ok || !data.length) { 
+        div.innerHTML = '<div class="text-muted">No transporters found nearby.</div>'; 
+        return; 
+      }
       const rows = data.map(t => `
         <tr>
           <td>${t.transporter_name}</td>
@@ -396,62 +494,19 @@ async function loadMyDisputes() {
           <td>${t.rates.Van || '-'}</td>
           <td>${t.rates.Pickup || '-'}</td>
           <td>${t.rates.Tractor || '-'}</td>
-          <td><small>${t.distance_km ? Math.round(t.distance_km) + ' km' : ''}</small></td>
+          <td><small>${t.distance_km ? Math.round(t.distance_km) + ' km' : '-'}</small></td>
         </tr>`).join('');
       div.innerHTML = `
         <table class="table table-bordered table-striped">
-          <thead><tr><th>Transporter</th><th>Status</th><th>Lorry(<span style="color:brown;">Rate per km)</th><th>Van(<span style="color:brown;">Rate per km)</th><th>Pickup(<span style="color:brown;">Rate per km)</th><th>Tractor(<span style="color:brown;">Rate per km)</th><th>Distance Apart</th></tr></thead>
+          <thead><tr><th>Transporter</th><th>Status</th><th>Lorry<br><small>Rate/km</small></th><th>Van<br><small>Rate/km</small></th><th>Pickup<br><small>Rate/km</small></th><th>Tractor<br><small>Rate/km</small></th><th>Distance Apart</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>`;
       const sel = document.getElementById('transporterSelect');
       sel.innerHTML = '<option value="">Select transporter</option>' +
-        data.filter(t => t.availability).map(t => `<option value="${t.id}">${t.transporter_name} (${Math.round(t.distance_km || 0)} km)</option>`).join('');
+        data.filter(t => t.availability).map(t => `<option value="${t.id}">${t.transporter_name} (${t.distance_km ? Math.round(t.distance_km) + ' km' : '—'})</option>`).join('');
     }
-    document.getElementById('navTransporters').addEventListener('click', () => {
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        
-        farmerLat = lat;
-        farmerLng = lng;
-        savedLat = lat;
-        savedLng = lng;
 
-        // Save to server for future visits
-        await fetch('/api/farmer/update-location', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({ lat, lng })
-        });
-
-        loadTransporters(lat, lng);
-        showToast("Location updated — showing nearest transporters");
-      },
-      () => {
-        // Geolocation denied or failed → use saved location if exists
-        if (savedLat && savedLng) {
-          loadTransporters(savedLat, savedLng);
-          showToast("Using your saved location");
-        } else {
-          loadTransporters(); // show all
-          showToast("Location access denied — showing all transporters");
-        }
-      }
-    );
-  } else {
-    // Browser doesn't support geolocation
-    if (savedLat && savedLng) {
-      loadTransporters(savedLat, savedLng);
-      showToast("Using your saved location");
-    } else {
-      loadTransporters();
-    }
-  }
-});
-    // === ESTIMATE ===
+    // === REST OF SCRIPT UNCHANGED (estimate, requests, payment, tracking, socket, start) ===
     const vehicleType = document.getElementById('vehicleType');
     const distance = document.getElementById('distance');
     const quantityInput = document.querySelector('input[name="quantity"]');
@@ -479,15 +534,17 @@ async function loadMyDisputes() {
       if (!r.ok) { msg.textContent = d.message || 'Error'; msg.classList.add('text-danger'); return; }
       msg.textContent = 'Request submitted'; setTimeout(() => msg.textContent = '', 3000); e.target.reset();
     };
-    // === MY REQUESTS + LIVE TRACKING (OPENSTREETMAP) ===
+
     let farmerMaps = {};
+    let reqData = {};
     async function loadMyRequests() {
       const area = document.getElementById('myRequestsArea');
       const r = await fetch('/my-requests', { credentials: 'same-origin' });
       const d = await r.json().catch(() => []);
       if (!r.ok || !d.length) { area.innerHTML = '<div>No requests yet.</div>'; return; }
+      d.forEach(req => reqData[req.id] = req);
       area.innerHTML = d.map(req => `
-        <div class="mb-3 p-3 border rounded">
+        <div class="mb-3 p-3 border rounded" data-req-id="${req.id}">
           <div><strong>#${req.id}</strong> ${req.produce} — ${req.quantity} tons
             <span class="badge bg-light text-dark">${req.status}</span>
           </div>
@@ -532,7 +589,7 @@ async function loadMyDisputes() {
         });
       }, 100);
     }
-    // === PAYMENT BUTTON & STK PUSH ===
+
     document.addEventListener('click', async e => {
       if (!e.target.classList.contains('pay-now')) return;
       const btn = e.target;
@@ -540,7 +597,7 @@ async function loadMyDisputes() {
       const amount = btn.dataset.amount;
       btn.disabled = true;
       btn.textContent = 'Sending...';
-      let countdownInterval;  // To store the interval for clearing
+      let countdownInterval;
       try {
         const res = await fetch('/api/farmer/pay', {
           method: 'POST',
@@ -552,7 +609,6 @@ async function loadMyDisputes() {
         if (!res.ok) throw new Error(d.message);
         showToast(`STK Push sent! Pay KES ${amount} on your phone.`);
         
-        // Start 60s countdown
         const countdownEl = document.getElementById(`countdown-${requestId}`);
         countdownEl.style.display = 'block';
         let timeLeft = 60;
@@ -566,32 +622,38 @@ async function loadMyDisputes() {
           }
           timeLeft--;
         }, 1000);
-        btn.textContent = 'Processing...';  // Update button text during polling
+        btn.textContent = 'Processing...';
       } catch (err) {
         alert(err.message);
         btn.disabled = false;
         btn.textContent = 'Pay Now';
       }
     });
+
     function initTrackingMap(requestId) {
       const mapEl = document.getElementById(`map-${requestId}`);
       if (!mapEl || farmerMaps[requestId]) return;
-      const map = L.map(mapEl).setView([-1.2921, 36.8219], 15);
+
+      const map = L.map(mapEl).setView([-1.2921, 36.8219], 12);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
       }).addTo(map);
-      const marker = L.marker([-1.2921, 36.8219], {
-        icon: L.icon({
-          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
-          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-          iconSize: [25, 41],
-          iconAnchor: [12, 41]
-        })
-      }).addTo(map);
-      farmerMaps[requestId] = { map, marker };
+
+      // Truck icon
+      const truckIcon = L.icon({
+        iconUrl: 'https://cdn-icons-png.flaticon.com/512/2344/2344105.png',
+        iconSize: [40, 40],
+        iconAnchor: [20, 40]
+      });
+
+      const marker = L.marker([-1.2921, 36.8219], { icon: truckIcon }).addTo(map);
+      const polyline = L.polyline([], { color: '#0d6efd', weight: 6, opacity: 0.8 }).addTo(map);
+
+      farmerMaps[requestId] = { map, marker, polyline, path: [], accuracyCircle: null, routeControl: null };
+
       socket.emit('join-tracking', requestId);
     }
-    // === RATING ===
+
     document.addEventListener('click', async e => {
       if (!e.target.classList.contains('submit-rating')) return;
       const requestId = e.target.dataset.id;
@@ -608,6 +670,7 @@ async function loadMyDisputes() {
       if (!res.ok) alert(d.message || "Error");
       else { alert("Rating submitted!"); loadMyRequests(); }
     });
+
     function showToast(msg) {
       const toast = document.createElement('div');
       toast.className = 'position-fixed top-0 end-0 p-3';
@@ -623,46 +686,114 @@ async function loadMyDisputes() {
       new bootstrap.Toast(toast.querySelector('.toast')).show();
       setTimeout(() => toast.remove(), 5000);
     }
-    // === SOCKET.IO ===
+
     const socket = io({ withCredentials: true });
     socket.on('connect', () => console.log('Connected for tracking'));
     socket.on('live-location', data => {
-      const { requestId, lat, lng } = data;
+      const { requestId, lat, lng, accuracy } = data;
       const obj = farmerMaps[requestId];
       if (!obj) return;
-      const { map, marker } = obj;
-      const pos = [lat, lng];
-      marker.setLatLng(pos);
-      map.panTo(pos);
+
+      const { map, marker, polyline, path, accuracyCircle, routeControl } = obj;
+      const newPos = [lat, lng];
+
+      // 1. Draw the route line (blue trail behind the truck)
+      path.push(newPos);
+      polyline.setLatLngs(path);
+
+      // 2. Smooth sliding animation (feels like magic)
+      marker.setLatLng(newPos);
+      marker.slideTo(newPos, {
+        duration: 3000,
+        keepAtCenter: false
+      });
+
+      // 3. Auto-follow the truck
+      map.panTo(newPos, { animate: true, duration: 1.5 });
+
+      // 4. Accuracy circle (optional but pro)
+      if (accuracyCircle) {
+        accuracyCircle.setLatLng(newPos).setRadius(accuracy || 50);
+      } else {
+        obj.accuracyCircle = L.circle(newPos, {
+          radius: accuracy || 50,
+          color: '#0d6efd',
+          fillColor: '#0d6efd',
+          fillOpacity: 0.15,
+          weight: 2
+        }).addTo(map);
+      }
+
+      // 5. Live popup
+      marker.bindPopup(`
+        <div style="font-family: Segoe UI; text-align:center;">
+          <strong style="font-size:16px;">Driver is HERE</strong><br>
+          <small>Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}</small><br>
+          <small style="color:#0d6efd;">±${(accuracy || 15).toFixed(0)}m accuracy • Just now</small>
+        </div>
+      `, { autoClose: false, closeOnClick: false }).openPopup();
+
+      // 6. Add real road route if not yet and coordinates available
+      if (!routeControl && reqData[requestId]) {
+        const req = reqData[requestId];
+        const pickupPos = [req.pickup_lat, req.pickup_lng];
+        const destPos = [req.dest_lat, req.dest_lng];
+        if (pickupPos[0] && pickupPos[1] && destPos[0] && destPos[1]) {
+          obj.routeControl = L.Routing.control({
+            waypoints: [L.latLng(pickupPos), L.latLng(destPos)],
+            routeWhileDragging: false,
+            show: false, // Hide instructions
+            lineOptions: { styles: [{color: '#0d6efd', weight: 5}] },
+            createMarker: () => null // No extra markers
+          }).addTo(map);
+          showToast("Real route loaded!");
+        }
+      }
     });
-    // receive status update
     socket.on('request-updated', (update) => {
       console.log('Request updated:', update);
-      loadMyRequests(); // Reload on update
+      loadMyRequests();
       showToast(`Request #${update.id} is now: ${update.status}`);
     });
-    // === PAYMENT SUCCESS HANDLER ===
     socket.on('payment-success', (data) => {
-      loadMyRequests();  // Reload the list to reflect 'Paid' and hide "Pay Now"
+      loadMyRequests();
       showToast(`Payment confirmed for request #${data.requestId}! Receipt: ${data.receipt}`);
       const countdownEl = document.getElementById(`countdown-${data.requestId}`);
-      if (countdownEl) countdownEl.style.display = 'none';  // Hide countdown
+      if (countdownEl) countdownEl.style.display = 'none';
       const btn = document.querySelector(`.pay-now[data-id="${data.requestId}"]`);
       if (btn) {
         btn.textContent = 'Paid';
         btn.disabled = true;
       }
     });
-    //Dispute resolved notification
     socket.on('dispute-resolved', (data) => {
-      showToast(`✅ Dispute #${data.disputeId} Resolved`, 'success');
-      
+      showToast(`✅ Dispute #${data.disputeId} Resolved`);
       if (data.notes) {
         setTimeout(() => {
           alert(`Admin Notes:\n\n${data.notes}`);
         }, 800);
       }
     });
+
+    // Auto GPS for Pickup
+    document.getElementById('pickupGpsBtn').onclick = () => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            const lat = pos.coords.latitude.toFixed(6);
+            const lng = pos.coords.longitude.toFixed(6);
+            document.querySelector('[name="pickup_lat"]').value = lat;
+            document.querySelector('[name="pickup_lng"]').value = lng;
+            showToast("Pickup location set to your current GPS!");
+          },
+          () => showToast("Can't get GPS — enter manually."),
+          { enableHighAccuracy: true }
+        );
+      } else {
+        showToast("GPS not supported on this device.");
+      }
+    };
+
     // === START ===
     ensureFarmer().then(() => {
       loadProfileData();

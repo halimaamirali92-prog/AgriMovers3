@@ -1,2 +1,5 @@
-node_modules
-.env
+ECHO is on.
+node_modules/
+.env  # For any secret keys, like DB passwords or API tokens
+*.log  # Log files
+*.DS_Store  # Mac-specific junk (skip if on Windows)

@@ -98,7 +98,15 @@
     <div id="toastContainer"></div>
     <!-- Profile -->
     <div id="sectionProfile">
-      <h3>Profile & Availability</h3>
+      <!--welcome message-->
+  <div class="alert alert-success alert-dismissible fade show mt-3 mb-4 shadow-sm" role="alert">
+    <h4 class="alert-heading">
+      Welcome back, Transporter <span id="welcomeName" class="text-capitalize"></span>!
+    </h4>
+    <p class="mb-0">You are currently <strong id="availabilityStatus" class="fw-bold">loading...</strong>. Ready to receive requests!</p>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+      <h3>Vehicle Availability</h3>
       <div class="card p-3">
         <form id="profileForm">
           <div class="form-check form-switch mb-3">
@@ -135,10 +143,10 @@
           <div class="col-auto"><label>Vehicle</label>
             <select class="form-select" name="vehicle_type" required>
               <option value="">Select</option>
-              <option value="Lorry">Lorry(rate per km)</option>
-              <option value="Van">Van(rate per km)</option>
-              <option value="Pickup">Pickup(rate per km)</option>
-              <option value="Tractor">Tractor(rate per km)</option>
+              <option value="Lorry">Lorry</option>
+              <option value="Van">Van</option>
+              <option value="Pickup">Pickup</option>
+              <option value="Tractor">Tractor</option>
             </select>
           </div>
           <div class="col-auto"><label>Rate (KES/km)</label>
@@ -180,6 +188,11 @@
           return;  // Stop execution
         }
         document.getElementById('transporterName').textContent = data.user.name || 'Unknown';
+        // Welcome name (shows instantly when login)
+        const welcomeNameEl = document.getElementById('welcomeName');
+        if (welcomeNameEl) {
+          welcomeNameEl.textContent = data.user.name || 'Transporter';
+        }
         socket = io({ withCredentials: true, transports: ['websocket'] });
         socket.on('connect', () => console.log('Socket connected'));
         socket.on('new-request', req => { showToast(req); loadRequests(); });
@@ -244,6 +257,13 @@
       const res = await fetch('/api/transporter/profile', { credentials: 'same-origin' });
       if (!res.ok) { msg.textContent = 'Session expired'; msg.classList.add('text-danger'); setTimeout(() => location.href = '/index.html', 2000); return; }
       const d = await res.json();
+      // Update availability status in welcome message
+      const statusEl = document.getElementById('availabilityStatus');
+      if (statusEl) {
+        const isAvailable = d.availability === 1;
+        statusEl.textContent = isAvailable ? 'AVAILABLE' : 'OFFLINE';
+        statusEl.className = isAvailable ? 'fw-bold text-success' : 'fw-bold text-danger';
+      }
       document.getElementById('availability').checked = d.availability === 1;
       document.querySelector('input[name="numLorry"]').value = d.num_lorry || 0;
       document.querySelector('input[name="numVan"]').value = d.num_van || 0;
@@ -321,44 +341,36 @@
             </span>
             <div class="mt-2">
               ${r.status === 'Pending' ? `<button class="btn btn-success btn-sm" onclick="respond(${r.id}, 'Accepted')">Accept</button>
-                <button class="btn btn-danger btn-sm" onclick="respond(${r.id}, 'Rejected')">Reject</button>
-                <button class="btn btn-warning btn-sm" onclick="negotiate(${r.id})">Negotiate</button>` : ''}
+                <button class="btn btn-danger btn-sm" onclick="respond(${r.id}, 'Rejected')">Reject</button>` : ''}
               ${r.status === 'Accepted' && r.payment_status === 'Paid' ? `<button class="btn btn-primary btn-sm" onclick="updateStatus(${r.id}, 'Picked')">Mark Picked</button>` : ''}
               ${r.status === 'Picked' ? `<button class="btn btn-primary btn-sm" onclick="updateStatus(${r.id}, 'En Route')">Mark En Route</button>` : ''}
               ${r.status === 'En Route' ? `<button class="btn btn-success btn-sm" onclick="updateStatus(${r.id}, 'Delivered')">Mark Delivered</button>` : ''}
             </div>
           </div>`).join('');
     }
-    // === RESPOND / NEGOTIATE ===
-    async function respond(id, action) {
-      const res = await fetch(`/api/transporter/respond/${id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ action })
-      });
-      const d = await res.json();
-      alert(d.message);
-      loadRequests();
-    }
-    async function negotiate(id) {
-      const rate = prompt("Proposed rate (KES/km):"); if (!rate) return;
-      const res = await fetch(`/api/transporter/respond/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ action: 'Negotiating', proposed_rate: rate }) });
-      const d = await res.json(); alert(d.message); loadRequests();
-    }
+    
     // === GPS TRACKING ===
     let trackingInterval = null, currentRequestId = null;
     function startGPSTracking(id) {
       if (!navigator.geolocation) return alert("GPS not supported");
       currentRequestId = id;
       socket.emit('start-tracking', id);
-      trackingInterval = setInterval(() => {
-        navigator.geolocation.getCurrentPosition(
-          pos => socket.emit('update-location', { requestId: id, lat: pos.coords.latitude, lng: pos.coords.longitude }),
-          err => console.error(err),
-          { enableHighAccuracy: true, timeout: 10000 }
-        );
-      }, 10000);
+     // BETTER: Send location every 4 seconds with high accuracy
+trackingInterval = setInterval(() => {
+  navigator.geolocation.watchPosition(
+    pos => {
+      const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+      socket.emit('update-location', { requestId: id, lat, lng, accuracy });
+      console.log(`Live location sent: ${lat}, ${lng} (±${accuracy}m)`);
+    },
+    err => console.error("GPS Error:", err),
+    {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 5000
+    }
+  );
+}, 4000); // Every 4 seconds = feels instant
     }
     function stopGPSTracking() {
       if (trackingInterval) clearInterval(trackingInterval);
@@ -397,6 +409,28 @@
       document.getElementById('locationDisplay').textContent = `Manual: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
       alert('Location updated!');
     };
+
+    // === ACCEPT / REJECT REQUEST ===
+async function respond(requestId, action) {
+  if (!confirm(`Are you sure you want to ${action.toLowerCase()} this request?`)) return;
+
+  const res = await fetch('/api/transporter/respond/' + requestId, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ action })
+  })
+  .then(r => r.json())
+  .then(d => {
+    alert(d.message);
+    loadRequests(); // Refresh the list
+  })
+  .catch(err => {
+    console.error(err);
+    alert('Failed to respond. Check internet connection.');
+  });
+}
+
     // === RATINGS ===
     async function loadRatings() {
       const res = await fetch('/api/transporter/ratings', { credentials: 'same-origin' });

@@ -203,31 +203,37 @@ app.get("/api/farmer/profile", ensureAuth, ensureRole("farmer"), async (req, res
       email: user.email,
       phone: user.phone || "",
       location: user.location || "",
-      profile_image_url: user.profile_image ? `/uploads/${user.profile_image}` : "default-profile.png",
       lat: user.lat || null,
-      lng: user.lng || null
+      lng: user.lng || null,
+      profile_image_url: user.profile_image ? `/uploads/${user.profile_image}` : "default-profile.png",
     });
   } catch (err) {
     console.error("Profile fetch error:", err);
     res.status(500).json({ message: "Database error" });
   }
 });
+
 app.post("/api/farmer/update-profile", ensureAuth, ensureRole("farmer"), upload.single("profile_image"), async (req, res) => {
   try {
-    const { fullname, phone, location, lat, lng } = req.body;  // Add lat and lng here
+    const { fullname, phone, location, lat, lng } = req.body;
     const profile_image = req.file ? req.file.filename : null;
+
     const fields = [];
     const values = [];
-    if (fullname) { fields.push("fullname = ?"); values.push(fullname); }
-    if (phone) { fields.push("phone = ?"); values.push(phone); }
-    if (location) { fields.push("location = ?"); values.push(location); }
-    if (lat) { fields.push("lat = ?"); values.push(parseFloat(lat)); }  // Add this
-    if (lng) { fields.push("lng = ?"); values.push(parseFloat(lng)); }  // Add this
+
+    if (fullname?.trim()) { fields.push("fullname = ?"); values.push(fullname.trim()); }
+    if (phone?.trim()) { fields.push("phone = ?"); values.push(phone.trim()); }
+    if (location !== undefined) { fields.push("location = ?"); values.push(location?.trim() || null); }
+    if (lat !== undefined && lat !== '') { fields.push("lat = ?"); values.push(parseFloat(lat)); }
+    if (lng !== undefined && lng !== '') { fields.push("lng = ?"); values.push(parseFloat(lng)); }
     if (profile_image) { fields.push("profile_image = ?"); values.push(profile_image); }
+
     if (fields.length === 0) return res.status(400).json({ message: "No fields to update" });
+
     values.push(req.session.userId);
     const sql = `UPDATE users SET ${fields.join(", ")} WHERE id = ?`;
     await db.promise().query(sql, values);
+
     res.json({ message: "Profile updated successfully" });
   } catch (err) {
     console.error("Update profile error:", err);
@@ -247,19 +253,59 @@ app.get("/api/transporter/:id/rates", ensureAuth, ensureRole("farmer"), async (r
 });
 app.post("/api/farmer/request", ensureAuth, ensureRole("farmer"), async (req, res) => {
   try {
-    const { produce, quantity, pickup_location, destination, vehicleType, distance_km, transporterId } = req.body;
+    const { 
+      produce, 
+      quantity, 
+      pickup_location, 
+      destination, 
+      vehicleType, 
+      distance_km, 
+      transporterId,
+      pickup_lat,
+      pickup_lng,
+      dest_lat,
+      dest_lng 
+    } = req.body;
+
     const farmerId = req.session.userId;
     const farmerName = req.session.name;
-    const [transporter] = await db.promise().query("SELECT fullname FROM users WHERE id=? AND role='transporter'", [transporterId]);
-    if (!transporter.length) return res.status(400).json({ message: "Invalid transporter selected" });
-    const [result] = await db.promise().query(
-      `INSERT INTO transport_requests  
-      (farmer_id, farmer_name, produce, quantity, pickup_location, destination, vehicleType, distance_km, transporter_id, transporter_name, status)  
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
-      [farmerId, farmerName, produce, quantity, pickup_location, destination, vehicleType, distance_km, transporterId, transporter[0].fullname]
+
+    const [transporter] = await db.promise().query(
+      "SELECT fullname FROM users WHERE id = ? AND role = 'transporter'", 
+      [transporterId]
     );
+
+    if (!transporter.length) {
+      return res.status(400).json({ message: "Invalid transporter selected" });
+    }
+
+    const transporterName = transporter[0].fullname;
+
+    await db.promise().query(
+      `INSERT INTO transport_requests 
+      (farmer_id, farmer_name, produce, quantity, pickup_location, destination, 
+       vehicleType, distance_km, transporter_id, transporter_name, status,
+       pickup_lat, pickup_lng, dest_lat, dest_lng) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?)`,
+      [
+        farmerId,
+        farmerName,
+        produce,
+        quantity,
+        pickup_location,
+        destination,
+        vehicleType,
+        distance_km,
+        transporterId,
+        transporterName,
+        parseFloat(pickup_lat) || null,
+        parseFloat(pickup_lng) || null,
+        parseFloat(dest_lat) || null,
+        parseFloat(dest_lng) || null
+      ]
+    );
+
     const newRequest = {
-      id: result.insertId,
       farmer_name: farmerName,
       produce,
       quantity,
@@ -268,26 +314,25 @@ app.post("/api/farmer/request", ensureAuth, ensureRole("farmer"), async (req, re
       vehicleType,
       status: 'Pending'
     };
-    // SEND TO ALL ACTIVE SOCKETS OF THIS TRANSPORTER
+
+    // Notify transporter via socket
     const sockets = transporterSockets.get(transporterId);
     if (sockets && sockets.size > 0) {
       sockets.forEach(socketId => {
         io.to(socketId).emit('new-request', newRequest);
       });
-      console.log(`Notification sent to transporter ${transporterId} (${sockets.size} tab(s))`);
-    } else {
-      console.log(`Transporter ${transporterId} is offline`);
     }
+
     res.json({ message: "Request submitted successfully" });
   } catch (err) {
-    console.error("Request create error:", err);
-    res.status(500).json({ message: "Database error creating request" });
+    console.error("Request create error:", err.message);
+    res.status(500).json({ message: "Database error creating request", error: err.message });
   }
 });
 app.get("/my-requests", ensureAuth, ensureRole("farmer"), async (req, res) => {
   try {
     const [rows] = await db.promise().query(
-      "SELECT * FROM transport_requests WHERE farmer_id = ? ORDER BY created_at DESC",
+      "SELECT *, pickup_lat, pickup_lng, dest_lat, dest_lng FROM transport_requests WHERE farmer_id = ? ORDER BY created_at DESC",
       [req.session.userId]
     );
     res.json(rows);
@@ -521,6 +566,8 @@ app.get("/api/transporters-with-rates", ensureAuth, ensureRole("farmer"), async 
     const farmerLat = parseFloat(req.query.lat);
     const farmerLng = parseFloat(req.query.lng);
     let transporters = [];
+
+    // ADD THIS LINE IN BOTH QUERIES: AND suspended = 0
     if (farmerLat && farmerLng) {
       const [geoTrans] = await db.promise().query( 
         `SELECT id, fullname AS transporter_name, availability, lat, lng, 
@@ -531,6 +578,7 @@ app.get("/api/transporters-with-rates", ensureAuth, ensureRole("farmer"), async 
          FROM users  
          WHERE role = 'transporter'  
            AND availability = 1  
+           AND suspended = 0                     -- ADD THIS
            AND lat IS NOT NULL  
            AND lng IS NOT NULL 
          HAVING distance_km <= 100  
@@ -538,21 +586,25 @@ app.get("/api/transporters-with-rates", ensureAuth, ensureRole("farmer"), async 
       transporters = geoTrans;
     } else {
       const [allTrans] = await db.promise().query(
-        "SELECT id, fullname AS transporter_name, availability, lat, lng FROM users WHERE role='transporter' AND availability=1"
+        "SELECT id, fullname AS transporter_name, availability, lat, lng FROM users WHERE role='transporter' AND availability=1 AND suspended = 0"  // ADD THIS
       );
       transporters = allTrans.map(t => ({ ...t, distance_km: null }));
     }
+
     if (transporters.length === 0) return res.json([]);
+
     const transporterIds = transporters.map(t => t.id);
     const [rates] = await db.promise().query(
       `SELECT transporter_id, vehicle_type, rate_per_km FROM transporter_rates WHERE transporter_id IN (?)`,
       [transporterIds.length ? transporterIds : [0]]
     );
+
     const result = transporters.map(t => {
       const rateMap = {};
       rates.filter(r => r.transporter_id === t.id).forEach(r => rateMap[r.vehicle_type] = r.rate_per_km);
       return { ...t, rates: rateMap };
     }).filter(t => Object.keys(t.rates).length > 0);
+
     res.json(result);
   } catch (err) {
     console.error(err);
@@ -768,26 +820,32 @@ app.get("/admin/users", ensureAuth, ensureRole("admin"), async (req, res) => {
 });
 app.post("/admin/toggle-suspend/:id", ensureAuth, ensureRole("admin"), async (req, res) => {
   try {
-    const { reason } = req.body;  // Get reason from the form body
-    const [user] = await db.promise().query("SELECT id, suspended FROM users WHERE id = ?", [req.params.id]);
+    const userId = req.params.id;
+    const { reason } = req.body;
+
+    const [user] = await db.promise().query("SELECT suspended FROM users WHERE id = ?", [userId]);
     if (!user.length) return res.status(404).json({ message: "User not found" });
-    if (user[0].suspended === 1) return res.status(400).json({ message: "User is already suspended" });
 
-    // Suspend the user
-    await db.promise().query("UPDATE users SET suspended = 1 WHERE id = ?", [req.params.id]);
+    const currentlySuspended = user[0].suspended === 1;
+    const newStatus = currentlySuspended ? 0 : 1;   // TOGGLE
 
-    // Log the flag/suspension with reason (if the flags table exists)
-    if (reason) {
+    await db.promise().query("UPDATE users SET suspended = ? WHERE id = ?", [newStatus, userId]);
+
+    // Optional: log the reason only when suspending
+    if (!currentlySuspended && reason) {
       await db.promise().query(
         "INSERT INTO flags (user_id, admin_id, reason) VALUES (?, ?, ?)",
-        [req.params.id, req.session.userId, reason]
+        [userId, req.session.userId, reason]
       );
     }
 
-    res.json({ message: "User flagged and suspended successfully" });
+    res.json({ 
+      message: currentlySuspended ? "User unsuspended" : "User suspended",
+      suspended: newStatus 
+    });
   } catch (err) {
-    console.error("Flag/suspend error:", err);
-    res.status(500).json({ message: "Database error flagging/suspending user" });
+    console.error("Toggle suspend error:", err);
+    res.status(500).json({ message: "Database error" });
   }
 });
 app.delete("/admin/delete-user/:id", ensureAuth, ensureRole("admin"), async (req, res) => {
@@ -802,10 +860,39 @@ app.delete("/admin/delete-user/:id", ensureAuth, ensureRole("admin"), async (req
   }
 });
 app.get("/admin/requests", ensureAuth, ensureRole("admin"), async (req, res) => {
-  const [rows] = await db.promise().query(
-    "SELECT id, farmer_name, produce, vehicleType, status FROM transport_requests ORDER BY created_at DESC"
-  );
-  res.json(rows);
+  try {
+    const [rows] = await db.promise().query(`
+      SELECT 
+        tr.id,
+        tr.farmer_id,
+        tr.farmer_name,
+        tr.transporter_id,
+        tr.transporter_name,
+        tr.produce,
+        tr.quantity,
+        tr.pickup_location,
+        tr.destination,
+        tr.vehicleType,
+        tr.distance_km,
+        tr.total_amount,
+        tr.status,
+        tr.payment_status,
+        tr.mpesa_receipt,
+        tr.created_at,
+        f.email AS farmer_email,
+        f.phone AS farmer_phone,
+        t.email AS transporter_email,
+        t.phone AS transporter_phone
+      FROM transport_requests tr
+      LEFT JOIN users f ON tr.farmer_id = f.id
+      LEFT JOIN users t ON tr.transporter_id = t.id
+      ORDER BY tr.created_at DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("Admin requests error:", err);
+    res.status(500).json({ message: "Database error" });
+  }
 });
 app.get("/admin/payments", ensureAuth, ensureRole("admin"), async (req, res) => {
   const [rows] = await db.promise().query("SELECT id, farmer_name, transporter_name, payment_status FROM transport_requests");
@@ -872,17 +959,71 @@ app.delete("/admin/delete-dispute/:id", ensureAuth, ensureRole("admin"), async (
 });
 app.get("/admin/report", ensureAuth, ensureRole("admin"), async (req, res) => {
   try {
-    const [[users]] = await db.promise().query("SELECT COUNT(*) AS total FROM users");
-    const [[requests]] = await db.promise().query("SELECT COUNT(*) AS total FROM transport_requests");
-    const [[approved]] = await db.promise().query("SELECT COUNT(*) AS total FROM transport_requests WHERE payment_status='Approved'");
+    const PLATFORM_FEE_PERCENT = 10;
+
+    // 1. Revenue & Earnings
+    const [[revenue]] = await db.promise().query(`
+      SELECT 
+        COALESCE(SUM(total_amount), 0) AS total_revenue,
+        COALESCE(SUM(total_amount) * ${PLATFORM_FEE_PERCENT / 100}, 0) AS platform_earnings,
+        COALESCE(SUM(total_amount) * ${(100 - PLATFORM_FEE_PERCENT) / 100}, 0) AS transporter_earnings
+      FROM transport_requests 
+      WHERE payment_status IN ('Paid', 'Approved')
+    `);
+
+    // 2. Busiest Regions (Top 8)
+    const [regions] = await db.promise().query(`
+      SELECT location, COUNT(*) as count 
+      FROM (
+        SELECT pickup_location AS location FROM transport_requests WHERE pickup_location IS NOT NULL
+        UNION ALL
+        SELECT destination FROM transport_requests WHERE destination IS NOT NULL
+      ) combined
+      GROUP BY location 
+      ORDER BY count DESC 
+      LIMIT 8
+    `);
+
+    // 3. Most Used Vehicles
+    const [vehicles] = await db.promise().query(`
+      SELECT vehicleType, COUNT(*) as count 
+      FROM transport_requests 
+      WHERE vehicleType IS NOT NULL 
+      GROUP BY vehicleType 
+      ORDER BY count DESC
+    `);
+
+    // 4. Ratings & Feedback
+    const [[ratings]] = await db.promise().query(`
+      SELECT 
+        AVG(rating) as avg_rating,
+        COUNT(*) as total_rated,
+        SUM(CASE WHEN rating <= 2 THEN 1 ELSE 0 END) as low_ratings
+      FROM transport_requests 
+      WHERE rating IS NOT NULL
+    `);
+
+    // Send clean response (no peak_days)
     res.json({
-      users: users.total,
-      requests: requests.total,
-      approvedPayments: approved.total,
+      revenue: {
+        total: Number(revenue.total_revenue) || 0,
+        platform_fee: PLATFORM_FEE_PERCENT,
+        platform_earnings: Number(revenue.platform_earnings) || 0,
+        paid_to_transporters: Number(revenue.transporter_earnings) || 0
+      },
+      busiest_regions: regions,
+      popular_vehicles: vehicles,
+      feedback: {
+        avg_rating: ratings.avg_rating ? Number(ratings.avg_rating).toFixed(1) : "N/A",
+        total_reviews: Number(ratings.total_rated),
+        low_rating_count: Number(ratings.low_ratings),
+        satisfaction_rate: ratings.avg_rating ? Math.round((ratings.avg_rating / 5) * 100) + "%" : "N/A"
+      }
     });
+
   } catch (err) {
-    console.error("Report error:", err);
-    res.status(500).json({ message: "Database error loading report" });
+    console.error("Advanced report error:", err);
+    res.status(500).json({ message: "Error generating report" });
   }
 });
 /* ---------------- DASHBOARD ROUTES ---------------- */
