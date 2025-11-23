@@ -85,16 +85,21 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, "public")));
 app.use(sessionMiddleware); // ONLY ONCE
 // MySQL connection
-const db = mysql.createConnection(
-  process.env.DATABASE_URL ? {
-    uri: process.env.DATABASE_URL
-  } : {
-    host: "localhost",
-    user: "root",
-    password: "",
-    database: "agrimovers3",
-  }
-);
+const connectionConfig = process.env.DATABASE_URL ? {
+  host: process.env.DATABASE_URL.split('@')[1].split(':')[0],
+  port: parseInt(process.env.DATABASE_URL.split(':')[4].split('/')[0]),
+  user: process.env.DATABASE_URL.split('://')[1].split(':')[0],
+  password: process.env.DATABASE_URL.split(':')[2].split('@')[0],
+  database: process.env.DATABASE_URL.split('/')[3].split('?')[0],
+  ssl: { ca: fs.readFileSync('ca.pem') }  // For Aiven SSL
+} : {
+  host: "localhost",
+  user: "root",
+  password: "",
+  database: "agrimovers3",
+};
+
+const db = mysql.createConnection(connectionConfig);
 db.connect((err) => {
   if (err) {
     console.error("Database connection failed:", err.message);
