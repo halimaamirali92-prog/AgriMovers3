@@ -86,7 +86,9 @@ app.use(express.static(path.join(__dirname, "public")));
 app.use(sessionMiddleware); // ONLY ONCE
 // MySQL connection
 const db = mysql.createConnection(
-  process.env.DATABASE_URL || {
+  process.env.DATABASE_URL ? {
+    uri: process.env.DATABASE_URL
+  } : {
     host: "localhost",
     user: "root",
     password: "",
