@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgriMovers - Register</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="login-container">
+    <h2>Create Account</h2>
+    <div id="msg" class="alert"></div>
+    <div class="form-row"><input id="fullname" class="input" placeholder="Full Name"></div>
+    <div class="form-row"><input id="email" class="input" placeholder="Email"></div>
+    <div class="form-row"><input id="password" type="password" class="input" placeholder="Password"></div>
+    <div class="form-row"><input id="confirmpassword" type="password" class="input" placeholder="Confirm Password"></div>
+    <div class="form-row">
+      <select id="role" class="input small">
+        <option value="">Select Role</option>
+        <option value="farmer">Farmer</option>
+        <option value="transporter">Transporter</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <button id="registerBtn">Register</button>
+    </div>
+    <div class="register-link">
+      Already have an account? <a href="index.html">Login here</a>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('registerBtn').onclick = async () => {
+      const fullname = document.getElementById('fullname').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const confirmpassword = document.getElementById('confirmpassword').value;
+      const role = document.getElementById('role').value;
+      const msg = document.getElementById('msg');
+      msg.style.display = 'none';
+
+      if (!fullname || !email || !password || !confirmpassword || !role) {
+        msg.innerText = 'Please fill all fields';
+        msg.style.display = 'block';
+        return;
+      }
+
+      if (password !== confirmpassword) {
+        msg.innerText = 'Passwords do not match';
+        msg.style.display = 'block';
+        return;
+      }
+
+      const res = await fetch('/register', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ fullname, email, password, confirmpassword, role })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        msg.innerText = data.message || 'Registration failed';
+        msg.style.display = 'block';
+        return;
+      }
+
+      alert('Registration successful! Please login.');
+      location.href = 'index.html';
+    };
+  </script>
+</body>
+</html>

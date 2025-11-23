@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # AgriMovers (prototype)
 
 This repository contains a prototype Node.js + Express backend and simple static front-end pages for the AgriMovers logistics platform.
@@ -81,3 +82,6 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
 Only change execution policy if you understand the security implications — `RemoteSigned` is a common setting for development machines.
+=======
+# AgriMovers3
+>>>>>>> 6f64775de71f8972091d5224a394be4ec294b5c9

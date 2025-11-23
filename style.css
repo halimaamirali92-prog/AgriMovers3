@@ -1,0 +1,200 @@
+/* ===== General ===== */
+body {
+  font-family: Arial, sans-serif;
+  background: #f5f7fb;
+  color: #333;
+  margin: 0;
+  padding: 20px;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+h1, h2, h3 {
+  margin-top: 0;
+}
+
+/* ===== Header ===== */
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+header button {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  background: #2e7d32;
+  color: white;
+  cursor: pointer;
+}
+
+header button.secondary {
+  background: #555;
+}
+
+/* ===== Forms ===== */
+.form-row {
+  margin: 10px 0;
+}
+
+.input {
+  padding: 8px;
+  width: 100%;
+  max-width: 420px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.input.small {
+  max-width: 180px;
+}
+
+button {
+  padding: 8px 12px;
+  border: none;
+  background: #2e7d32;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #555;
+  margin-left: 8px;
+}
+
+/* ===== Tables ===== */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+
+th, td {
+  padding: 8px 6px;
+  border: 1px solid #eee;
+  text-align: left;
+}
+
+/* ===== Alerts ===== */
+.alert {
+  padding: 10px;
+  background: #ffefc1;
+  border-radius: 5px;
+  margin: 8px 0;
+}
+
+/* ===== Sections ===== */
+section {
+  margin-bottom: 20px;
+}
+
+/* ===== Links ===== */
+a {
+  color: #2e7d32;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 600px) {
+  .container {
+    padding: 10px;
+  }
+
+  .input {
+    width: 100%;
+  }
+
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  header button {
+    margin-top: 10px;
+  }
+}
+/* ===== Login/Register page specific ===== */
+.login-container {
+  max-width: 400px;
+  margin: 60px auto;
+  padding: 25px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.login-container h2 {
+  text-align: center;
+  margin-bottom: 20px;
+  color: #2e7d32;
+}
+.login-container .form-row {
+  margin-bottom: 15px;
+}
+.login-container .input {
+  width: 100%;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+  transition: all 0.2s ease;
+}
+.login-container .input:focus {
+  border-color: #2e7d32;
+  box-shadow: 0 0 5px rgba(46,125,50,0.3);
+  outline: none;
+}
+.login-container button {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  background: #2e7d32;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.login-container button:hover {
+  background: #1b5e20;
+}
+.login-container .secondary {
+  background: #555;
+  margin-top: 10px;
+}
+.login-container .register-link {
+  text-align: center;
+  margin-top: 12px;
+  font-size: 14px;
+}
+.login-container .register-link a {
+  color: #2e7d32;
+  text-decoration: none;
+  font-weight: bold;
+}
+.login-container .register-link a:hover {
+  text-decoration: underline;
+}
+.alert {
+  padding: 10px;
+  background: #fff3cd;
+  border-left: 5px solid #ffc107;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  display: none;
+  text-align: center;
+}

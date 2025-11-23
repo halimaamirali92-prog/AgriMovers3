@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Transporter - AgriMovers</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background-color: #4CAF50;
+      color: white;
+    }
+    button {
+      margin: 2px;
+      padding: 5px 8px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      color: white;
+    }
+    button:nth-child(1) { background-color: #28a745; }
+    button:nth-child(2) { background-color: #ffc107; color: black; }
+    button:nth-child(3) { background-color: #007bff; }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    h2, h3 { color: #2c3e50; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h2>Transporter Dashboard</h2>
+      <div>
+        <span id="userName"></span>
+        <button onclick="logout()">Logout</button>
+      </div>
+    </header>
+
+    <section>
+      <h3>Available Requests</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Produce</th>
+            <th>Quantity</th>
+            <th>Pickup Location</th>
+            <th>Destination</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="available"></tbody>
+      </table>
+
+      <h3>My Assigned Requests</h3>
+      <table id="assignedRequests">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Produce</th>
+            <th>Quantity</th>
+            <th>Pickup Location</th>
+            <th>Destination</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="assigned"></tbody>
+      </table>
+    </section>
+  </div>
+
+<script>
+async function sessionUser() {
+  const res = await fetch('/session-user', { credentials: 'same-origin' });
+  const s = await res.json();
+  if (!s.loggedIn || s.user.role !== 'transporter') return location.href = '/login.html';
+  document.getElementById('userName').innerText = s.user.name;
+}
+
+async function loadRequests() {
+  // Load available requests (Pending)
+  const res1 = await fetch('/available-requests', { credentials: 'same-origin' });
+  const available = await res1.json();
+  document.getElementById('available').innerHTML = available.map(r => `
+    <tr>
+      <td>${r.id}</td>
+      <td>${r.produce}</td>
+      <td>${r.quantity}</td>
+      <td>${r.pickup_location}</td>
+      <td>${r.destination}</td>
+      <td>${r.status}</td>
+      <td><button onclick="updateStatus(${r.id}, 'Accepted')">Accept</button></td>
+    </tr>
+  `).join('');
+
+  // Load assigned requests
+  const res2 = await fetch('/my-assigned-requests', { credentials: 'same-origin' });
+  const assigned = await res2.json();
+  document.getElementById('assigned').innerHTML = assigned.map(r => `
+    <tr>
+      <td>${r.id}</td>
+      <td>${r.produce}</td>
+      <td>${r.quantity}</td>
+      <td>${r.pickup_location}</td>
+      <td>${r.destination}</td>
+      <td>${r.status}</td>
+      <td>
+        <button onclick="updateStatus(${r.id}, 'In Transit')">In Transit</button>
+        <button onclick="updateStatus(${r.id}, 'Delivered')">Delivered</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function updateStatus(id, status) {
+  const res = await fetch('/update-status/' + id, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ status })
+  });
+  const data = await res.json();
+  if (!res.ok) return alert(data.message || 'Error updating status.');
+  alert(data.message || 'Status updated.');
+  loadRequests();
+}
+
+async function logout() {
+  await fetch('/logout', { method: 'POST', credentials: 'same-origin' });
+  alert('You have been logged out.');
+  location.href = '/login.html';
+}
+
+(async () => {
+  await sessionUser();
+  await loadRequests();
+})();
+</script>
+</body>
+</html>
