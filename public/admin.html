@@ -284,7 +284,7 @@
             area.innerHTML = 'Loading...';
             const res = await fetch('/admin/requests');
             const reqs = await res.json();
-            let html = `<table class="table table-sm table-hover"><thead class="table-dark"><tr><th>ID</th><th>Farmer</th><th>Transporter</th><th>Produce</th><th>Vehicle</th><th>Status</th><th>Payment Status</th><th>Amount</th><th>Action</th></tr></thead><tbody>`;
+            let html = `<table class="table table-sm table-hover"><thead class="table-dark"><tr><th>ID</th><th>Farmer</th><th>Transporter</th><th>Produce</th><th>Vehicle</th><th>Status</th><th>Payment Status</th><th>Amount</th></tr></thead><tbody>`;
             reqs.forEach(r => {
                 const canApprove = r.payment_status !== 'Paid' && r.total_amount;
                 html += `<tr><td>${r.id}</td><td>${r.farmer_name}</td><td>${r.transporter_name || '—'}</td><td>${r.produce}</td><td>${r.vehicleType}</td><td>${r.status}</td><td>${r.payment_status}</td><td>${r.total_amount ? 'KES ' + r.total_amount : '—'}</td><td>${canApprove ? `<button class="btn btn-sm btn-success" onclick="approvePayment(${r.id})">Approve</button>` : ''}</td></tr>`;
