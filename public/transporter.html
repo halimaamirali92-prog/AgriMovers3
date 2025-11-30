@@ -321,33 +321,87 @@
     }
     // === REQUESTS ===
     async function loadRequests() {
-      const res = await fetch('/transporter/requests', { credentials: 'same-origin' });
-      if (!res.ok) {
-        document.getElementById('requestsArea').innerHTML = '<div class="text-danger">Failed to load requests</div>';
-        return;
-      }
-      const d = await res.json().catch(() => []);
-      const area = document.getElementById('requestsArea');
-      area.innerHTML = d.length === 0
-        ? '<div class="text-muted">No requests yet.</div>'
-        : d.map(r => `
-          <div class="border p-3 mb-2 rounded">
-            <strong>${r.farmer_name}</strong> — ${r.produce} (${r.vehicleType})
-            <small>${r.pickup_location} → ${r.destination}</small>
-            <span class="badge bg-info text-dark me-2">Status: ${r.status}</span>
-            <!-- PAYMENT BADGE HERE -->
-            <span id="payment-status-${r.id}" class="badge ${r.payment_status === 'Paid' ? 'badge-success' : 'badge-warning'}">
-              ${r.payment_status || 'Pending'}
-            </span>
-            <div class="mt-2">
-              ${r.status === 'Pending' ? `<button class="btn btn-success btn-sm" onclick="respond(${r.id}, 'Accepted')">Accept</button>
-                <button class="btn btn-danger btn-sm" onclick="respond(${r.id}, 'Rejected')">Reject</button>` : ''}
-              ${r.status === 'Accepted' && r.payment_status === 'Paid' ? `<button class="btn btn-primary btn-sm" onclick="updateStatus(${r.id}, 'Picked')">Mark Picked</button>` : ''}
-              ${r.status === 'Picked' ? `<button class="btn btn-primary btn-sm" onclick="updateStatus(${r.id}, 'En Route')">Mark En Route</button>` : ''}
-              ${r.status === 'En Route' ? `<button class="btn btn-success btn-sm" onclick="updateStatus(${r.id}, 'Delivered')">Mark Delivered</button>` : ''}
-            </div>
-          </div>`).join('');
+  const area = document.getElementById('requestsArea');
+  area.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-primary"></div> Loading your requests...</div>';
+
+  try {
+    const res = await fetch('/transporter/requests', { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('Failed');
+    const requests = await res.json();
+
+    if (requests.length === 0) {
+      area.innerHTML = '<p class="text-muted text-center">No requests yet. Set your rates to get started!</p>';
+      return;
     }
+
+    let html = `
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead class="table-primary">
+            <tr>
+              <th>Farmer</th>
+              <th>Produce</th>
+              <th>Route</th>
+              <th>Status</th>
+              <th>Payment</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    requests.forEach(r => {
+      const status = r.status || 'Pending';
+      const paymentStatus = r.payment_status || 'Pending';
+      const isDelivered = status === 'Delivered';
+      const isPaid = paymentStatus === 'Paid';
+
+      const statusBadge = {
+        'Pending': 'bg-secondary',
+        'Accepted': 'bg-info',
+        'Picked': 'bg-warning',
+        'En Route': 'bg-primary',
+        'Delivered': 'bg-success'
+      }[status] || 'bg-secondary';
+
+      const paymentBadge = isPaid ? 'bg-success' : 'bg-warning';
+
+      html += `
+        <tr class="${isDelivered ? 'table-secondary' : ''}">
+          <td><strong>${r.farmer_name}</strong></td>
+          <td>${r.produce}<br><small class="text-muted">${r.vehicleType} • ${r.quantity || ''}</small></td>
+          <td><small>${r.pickup_location} → ${r.destination}</small></td>
+          <td><span class="badge ${statusBadge}">${status}</span></td>
+          <td><span id="payment-status-${r.id}" class="badge ${paymentBadge}">${paymentStatus}</span></td>
+          <td>
+            ${!isDelivered ? `
+              ${status === 'Pending' ? `
+                <button class="btn btn-success btn-sm me-1" onclick="respond(${r.id}, 'Accepted')">Accept</button>
+                <button class="btn btn-danger btn-sm" onclick="respond(${r.id}, 'Rejected')">Reject</button>
+              ` : ''}
+              ${status === 'Accepted' && isPaid ? `
+                <button class="btn btn-warning btn-sm" onclick="updateStatus(${r.id}, 'Picked')">Picked</button>
+              ` : ''}
+              ${status === 'Picked' ? `
+                <button class="btn btn-info btn-sm text-white" onclick="updateStatus(${r.id}, 'En Route')">En Route</button>
+              ` : ''}
+              ${status === 'En Route' ? `
+                <button class="btn btn-success btn-sm" onclick="updateStatus(${r.id}, 'Delivered')">Delivered</button>
+              ` : ''}
+            ` : '<span class="text-success">Complete</span>'}
+          </td>
+        </tr>
+      `;
+    });
+
+    html += `</tbody></table></div>`;
+    area.innerHTML = html;
+
+  } catch (err) {
+    console.error(err);
+    area.innerHTML = '<p class="text-danger text-center">Failed to load requests.</p>';
+  }
+}
     
     // === GPS TRACKING ===
     let trackingInterval = null, currentRequestId = null;
