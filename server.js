@@ -101,7 +101,7 @@ if (process.env.DATABASE_URL) {
       password: dbUrl.password,
       database: dbUrl.pathname.slice(1),
       ssl: {
-        rejectUnauthorized: true
+        rejectUnauthorized: false
       },
       waitForConnections: true,
       queueLimit: 0
