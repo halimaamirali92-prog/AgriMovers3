@@ -553,10 +553,12 @@
           ${req.transporter_response ? `<div><strong>Response:</strong> ${req.transporter_response}</div>` : ''}
           ${req.proposed_rate ? `<div><strong>Proposed Rate:</strong> KES ${req.proposed_rate}</div>` : ''}
           ${['Picked', 'En Route'].includes(req.status) ? `
-            <div class="mt-3">
-              <div id="map-${req.id}" class="leaflet-container"></div>
-              <small class="text-success"><strong>Live Tracking Active</strong></small>
-            </div>` : ''}
+          <div class="mt-3 text-center">
+           <button class="btn btn-success btn-sm track-btn" data-id="${req.id}">
+            Track Live
+           </button>
+           <div id="map-${req.id}" class="leaflet-container mt-2" style="display:none;"></div>
+             </div>` : ''}
           ${req.status === 'Accepted' && req.payment_status === 'Pending' ? `
             <div class="mt-3 p-3 bg-warning text-dark rounded">
               <div><strong>Payment Required</strong></div>
@@ -590,45 +592,7 @@
       }, 100);
     }
 
-    document.addEventListener('click', async e => {
-      if (!e.target.classList.contains('pay-now')) return;
-      const btn = e.target;
-      const requestId = btn.dataset.id;
-      const amount = btn.dataset.amount;
-      btn.disabled = true;
-      btn.textContent = 'Sending...';
-      let countdownInterval;
-      try {
-        const res = await fetch('/api/farmer/pay', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({ requestId })
-        });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.message);
-        showToast(`STK Push sent! Pay KES ${amount} on your phone.`);
-        
-        const countdownEl = document.getElementById(`countdown-${requestId}`);
-        countdownEl.style.display = 'block';
-        let timeLeft = 60;
-        countdownInterval = setInterval(() => {
-          countdownEl.textContent = `Check phone... ${timeLeft}s`;
-          if (timeLeft <= 0) {
-            clearInterval(countdownInterval);
-            countdownEl.textContent = 'STK Push expired. Try again.';
-            btn.disabled = false;
-            btn.textContent = 'Pay Now';
-          }
-          timeLeft--;
-        }, 1000);
-        btn.textContent = 'Processing...';
-      } catch (err) {
-        alert(err.message);
-        btn.disabled = false;
-        btn.textContent = 'Pay Now';
-      }
-    });
+    
 
     function initTrackingMap(requestId) {
   const mapEl = document.getElementById(`map-${requestId}`);
@@ -721,21 +685,76 @@
 }
 
     document.addEventListener('click', async e => {
-      if (!e.target.classList.contains('submit-rating')) return;
-      const requestId = e.target.dataset.id;
-      const rating = document.querySelector(`#rating-${requestId}`).value;
-      const feedback = document.querySelector(`#feedback_${requestId}`).value.trim();
-      if (!rating) return alert("Select a rating");
-      const res = await fetch(`/api/farmer/rate/${requestId}`, {
+  const target = e.target;
+
+  // === TRACK LIVE BUTTON ===
+  if (target.classList.contains('track-btn')) {
+    const requestId = target.dataset.id;
+    window.location.href = `/farmer-tracking.html?id=${requestId}`;
+    return;
+  }
+
+  // === PAY NOW BUTTON ===
+  if (target.classList.contains('pay-now')) {
+    const btn = target;
+    const requestId = btn.dataset.id;
+    const amount = btn.dataset.amount;
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+    let countdownInterval;
+    try {
+      const res = await fetch('/api/farmer/pay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ rating, feedback })
+        body: JSON.stringify({ requestId })
       });
       const d = await res.json();
-      if (!res.ok) alert(d.message || "Error");
-      else { alert("Rating submitted!"); loadMyRequests(); }
+      if (!res.ok) throw new Error(d.message);
+      showToast(`STK Push sent! Pay KES ${amount} on your phone.`);
+
+      const countdownEl = document.getElementById(`countdown-${requestId}`);
+      countdownEl.style.display = 'block';
+      let timeLeft = 60;
+      countdownInterval = setInterval(() => {
+        countdownEl.textContent = `Check phone... ${timeLeft}s`;
+        if (timeLeft <= 0) {
+          clearInterval(countdownInterval);
+          countdownEl.textContent = 'STK Push expired. Try again.';
+          btn.disabled = false;
+          btn.textContent = 'Pay Now';
+        }
+        timeLeft--;
+      }, 1000);
+      btn.textContent = 'Processing...';
+    } catch (err) {
+      alert(err.message);
+      btn.disabled = false;
+      btn.textContent = 'Pay Now';
+    }
+    return;
+  }
+
+  // === SUBMIT RATING ===
+  if (target.classList.contains('submit-rating')) {
+    const requestId = target.dataset.id;
+    const rating = document.querySelector(`#rating-${requestId}`).value;
+    const feedback = document.querySelector(`#feedback_${requestId}`).value.trim();
+    if (!rating) return alert("Select a rating");
+    const res = await fetch(`/api/farmer/rate/${requestId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ rating, feedback })
     });
+    const d = await res.json();
+    if (!res.ok) alert(d.message || "Error");
+    else {
+      alert("Rating submitted!");
+      loadMyRequests();
+    }
+  }
+});
 
     function showToast(msg) {
       const toast = document.createElement('div');

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Live Tracking - AgriMovers</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+  <style>
+    body { margin: 0; padding: 0; background: #f8f9fa; font-family: 'Segoe UI', sans-serif; }
+    .header {
+      background: #0d6efd;
+      color: white;
+      padding: 15px 20px;
+      text-align: center;
+      font-weight: 600;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .back-btn {
+      position: absolute;
+      left: 15px;
+      top: 15px;
+      background: rgba(255,255,255,0.2);
+      border: none;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .back-btn:hover { background: rgba(255,255,255,0.3); }
+    .container-fluid { padding: 0; }
+    #map { height: calc(100vh - 60px); width: 100%; }
+    .status-bar {
+      position: absolute;
+      top: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 30px;
+      font-size: 14px;
+      z-index: 1000;
+      backdrop-filter: blur(5px);
+    }
+    .loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 20px 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      text-align: center;
+      z-index: 2000;
+    }
+    .spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #0d6efd; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <button class="back-btn" onclick="history.back()">Back</button>
+    <div>Live Truck Tracking</div>
+  </div>
+
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+    <div>Loading map & connecting to driver...</div>
+  </div>
+
+  <div id="statusBar" class="status-bar" style="display:none;"></div>
+  <div id="map"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const requestId = urlParams.get('id');
+    if (!requestId) {
+      alert("Invalid request ID");
+      history.back();
+    }
+
+    let map, truckMarker, routeControl, trail;
+    let path = [];
+    let reqData = {};
+
+    // Fetch request details
+    async function loadRequest() {
+      const res = await fetch(`/my-requests`, { credentials: 'same-origin' });
+      const requests = await res.json();
+      const req = requests.find(r => r.id == requestId);
+      if (!req) {
+        alert("Request not found");
+        history.back();
+        return;
+      }
+      reqData = req;
+      initMap();
+    }
+
+    function initMap() {
+      const pickupLat = parseFloat(reqData.pickup_lat);
+      const pickupLng = parseFloat(reqData.pickup_lng);
+      const destLat = parseFloat(reqData.dest_lat);
+      const destLng = parseFloat(reqData.dest_lng);
+
+      if (!pickupLat || !pickupLng) {
+        document.getElementById('loading').innerHTML = `<div class="text-danger">Pickup GPS missing</div>`;
+        return;
+      }
+
+      map = L.map('map').setView([pickupLat, pickupLng], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+      // Icons
+      const truckIcon = L.icon({
+        iconUrl: 'https://cdn-icons-png.flaticon.com/512/2344/2344105.png',
+        iconSize: [50, 50],
+        iconAnchor: [25, 50]
+      });
+
+      const startIcon = L.icon({
+        iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
+        iconSize: [40, 40],
+        iconAnchor: [20, 40]
+      });
+
+      const endIcon = L.icon({
+        iconUrl: 'https://cdn-icons-png.flaticon.com/512/9187/9187644.png',
+        iconSize: [40, 40],
+        iconAnchor: [20, 40]
+      });
+
+      L.marker([pickupLat, pickupLng], { icon: startIcon })
+        .addTo(map)
+        .bindPopup(`<b>Pickup:</b> ${reqData.pickup_location}`)
+        .openPopup();
+
+      if (destLat && destLng) {
+        L.marker([destLat, destLng], { icon: endIcon })
+          .addTo(map)
+          .bindPopup(`<b>Drop-off:</b> ${reqData.destination}`);
+      }
+
+      truckMarker = L.marker([pickupLat, pickupLng], { icon: truckIcon })
+        .addTo(map)
+        .bindPopup("<b>Driver Truck</b>")
+        .openPopup();
+
+      trail = L.polyline([], { color: '#198754', weight: 5, opacity: 0.8 }).addTo(map);
+
+      if (destLat && destLng) {
+        // Simple line instead of routing (faster, no API needed)
+if (destLat && destLng) {
+  L.polyline([
+    [pickupLat, pickupLng],
+    [destLat, destLng]
+  ], {
+    color: '#0d6efd',
+    weight: 6,
+    opacity: 0.7,
+    dashArray: '10,10'
+  }).addTo(map);
+}
+
+        // Fit to pickup location
+map.setView([pickupLat, pickupLng], 13);
+      }
+
+      path = [[pickupLat, pickupLng]];
+      trail.setLatLngs(path);
+
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('statusBar').style.display = 'block';
+      updateStatus("Connecting to driver...");
+
+      socket.emit('join-tracking', requestId);
+    }
+
+    function updateStatus(msg) {
+      const bar = document.getElementById('statusBar');
+      bar.textContent = msg;
+    }
+
+    const socket = io({ withCredentials: true });
+
+    socket.on('connect', () => {
+      updateStatus("Connected — waiting for driver location...");
+    });
+
+    socket.on('live-location', data => {
+      if (data.requestId != requestId) return;
+      const { lat, lng, accuracy } = data;
+      const newPos = [lat, lng];
+
+      path.push(newPos);
+      trail.setLatLngs(path);
+
+      truckMarker.setLatLng(newPos);
+      map.panTo(newPos, { animate: true, duration: 1.5 });
+
+      truckMarker.bindPopup(`
+        <div style="text-align:center; font-family: Segoe UI;">
+          <strong>Driver is HERE</strong><br>
+          <small>±${(accuracy || 15).toFixed(0)}m • Just now</small>
+        </div>
+      `).openPopup();
+
+      updateStatus(`Live • ±${(accuracy || 15).toFixed(0)}m accuracy`);
+    });
+
+    socket.on('request-updated', update => {
+      if (update.id == requestId) {
+        if (update.status === 'Delivered') {
+          updateStatus("Delivered! Trip complete.");
+          setTimeout(() => alert("Your produce has been delivered!"), 1000);
+        } else {
+          updateStatus(`${update.status} — Driver on the move`);
+        }
+      }
+    });
+
+    // Start
+    loadRequest();
+  </script>
+</body>
+</html>

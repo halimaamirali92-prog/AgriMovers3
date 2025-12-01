@@ -158,10 +158,19 @@
       </div>
     </div>
     <!-- Requests -->
-    <div id="sectionRequests" style="display:none;">
-      <h3>Incoming Requests</h3>
-      <div class="card p-3"><div id="requestsArea">(loading...)</div></div>
+<div id="sectionRequests" style="display:none;">
+  <h3>Incoming Requests</h3>
+  <div class="card p-3 mb-3"><div id="requestsArea">(loading...)</div></div>
+
+  <!-- LIVE TRACKING MAP -->
+  <div id="trackingSection" style="display:none;" class="card p-3">
+    <h5>Live GPS Tracking</h5>
+    <div id="trackingMap" style="height: 300px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"></div>
+    <div class="mt-2 text-center">
+      <small class="text-muted">Your location is being shared in real-time</small>
     </div>
+  </div>
+</div>
     <!-- Ratings -->
     <div id="sectionRatings" style="display:none;">
       <h3>Ratings & Reviews</h3>
@@ -173,6 +182,55 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
+    let trackingMap = null;
+        let transporterMarker = null;
+        let currentTrackingRequestId = null;
+
+        function initTrackingMap(lat, lng, pickupPlace) {
+  const mapDiv = document.getElementById('trackingMap');
+  if (!mapDiv) return;
+  if (trackingMap) trackingMap.remove();
+
+  trackingMap = L.map('trackingMap').setView([lat, lng], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(trackingMap);
+
+  // Transporter marker (moving)
+  transporterMarker = L.marker([lat, lng], {
+    icon: L.divIcon({ className: 'text-primary fw-bold', html: 'Truck', iconSize: [40, 40] })
+  }).addTo(trackingMap).bindPopup('You (Transporter)').openPopup();
+
+  // Farmer marker (fixed) — use real lat/lng from DB later
+  const farmerLat = -1.286389, farmerLng = 36.817223; // TEMP: Nairobi
+  L.marker([farmerLat, farmerLng], {
+    icon: L.divIcon({ className: 'text-success fw-bold', html: pickupPlace, iconSize: [120, 40] })
+  }).addTo(trackingMap).bindPopup(`Pickup: ${pickupPlace}`);
+
+  // Distance display
+  window.distanceEl = document.createElement('div');
+  window.distanceEl.style.cssText = `
+    position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white;
+    padding: 8px 12px; border-radius: 8px; z-index: 1000; font-weight: bold;
+  `;
+  mapDiv.appendChild(window.distanceEl);
+}
+function updateTransporterLocation(lat, lng) {
+  if (!transporterMarker || !trackingMap) return;
+  transporterMarker.setLatLng([lat, lng]);
+  trackingMap.setView([lat, lng], 13);
+
+  const row = document.querySelector(`tr[data-request-id="${currentTrackingRequestId}"]`);
+  const pickupPlace = row?.getAttribute('data-pickup') || 'Pickup';
+
+  // TEMP: Use Nairobi as farmer location (will be replaced later)
+  const farmerLat = -1.286389, farmerLng = 36.817223;
+  const distance = trackingMap.distance([lat, lng], [farmerLat, farmerLng]) / 1000;
+
+  if (window.distanceEl) {
+    window.distanceEl.textContent = `${distance.toFixed(2)} km from ${pickupPlace}`;
+  }
+}
     // === SOCKET.IO ===
     let socket;
     fetch('/session-user')
@@ -204,6 +262,9 @@
           }
           showToast(`Payment confirmed! Receipt: ${data.receipt}`);
         });
+        
+
+
         // === INITIAL LOAD ===
         loadTransporterProfile();
         showSection('profile');
@@ -270,12 +331,14 @@
       document.querySelector('input[name="numPickup"]').value = d.num_pickup || 0;
       document.querySelector('input[name="numTractor"]').value = d.num_tractor || 0;
       if (d.lat && d.lng) {
-        document.getElementById('manualLat').value = d.lat;
-        document.getElementById('manualLng').value = d.lng;
-        document.getElementById('latInput').value = d.lat;
-        document.getElementById('lngInput').value = d.lng;
-        document.getElementById('locationDisplay').textContent = `Saved: ${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}`;
-      }
+  const lat = parseFloat(d.lat);
+  const lng = parseFloat(d.lng);
+  document.getElementById('manualLat').value = lat;
+  document.getElementById('manualLng').value = lng;
+  document.getElementById('latInput').value = lat;
+  document.getElementById('lngInput').value = lng;
+  document.getElementById('locationDisplay').textContent = `Saved: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+}
       msg.textContent = 'Loaded!'; msg.classList.add('text-success'); setTimeout(() => msg.textContent = '', 3000);
     }
     document.getElementById('profileForm').onsubmit = async e => {
@@ -342,8 +405,8 @@
               <th>Farmer</th>
               <th>Produce</th>
               <th>Route</th>
-              <th>Status</th>
               <th>Payment</th>
+              <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -367,12 +430,12 @@
       const paymentBadge = isPaid ? 'bg-success' : 'bg-warning';
 
       html += `
-        <tr class="${isDelivered ? 'table-secondary' : ''}">
+        <tr class="${isDelivered ? 'table-secondary' : ''}" data-request-id="${r.id}" data-pickup="${r.pickup_location}">
           <td><strong>${r.farmer_name}</strong></td>
           <td>${r.produce}<br><small class="text-muted">${r.vehicleType} • ${r.quantity || ''}</small></td>
           <td><small>${r.pickup_location} → ${r.destination}</small></td>
-          <td><span class="badge ${statusBadge}">${status}</span></td>
           <td><span id="payment-status-${r.id}" class="badge ${paymentBadge}">${paymentStatus}</span></td>
+          <td><span class="badge ${statusBadge}">${status}</span></td>
           <td>
             ${!isDelivered ? `
               ${status === 'Pending' ? `
@@ -397,6 +460,17 @@
     html += `</tbody></table></div>`;
     area.innerHTML = html;
 
+    // AUTO-SHOW MAP IF ANY REQUEST IS IN TRACKING
+    const activeTracking = requests.find(r => ['Picked', 'En Route'].includes(r.status));
+    if (activeTracking) {
+      showTrackingMap(activeTracking.id);
+      if (activeTracking.status === 'Picked' || activeTracking.status === 'En Route') {
+        startGPSTracking(activeTracking.id);
+      }
+    } else {
+      hideTrackingMap();
+    }
+
   } catch (err) {
     console.error(err);
     area.innerHTML = '<p class="text-danger text-center">Failed to load requests.</p>';
@@ -406,42 +480,69 @@
     // === GPS TRACKING ===
     let trackingInterval = null, currentRequestId = null;
     function startGPSTracking(id) {
-      if (!navigator.geolocation) return alert("GPS not supported");
-      currentRequestId = id;
-      socket.emit('start-tracking', id);
-     // BETTER: Send location every 4 seconds with high accuracy
-trackingInterval = setInterval(() => {
-  navigator.geolocation.watchPosition(
-    pos => {
-      const { latitude: lat, longitude: lng, accuracy } = pos.coords;
-      socket.emit('update-location', { requestId: id, lat, lng, accuracy });
-      console.log(`Live location sent: ${lat}, ${lng} (±${accuracy}m)`);
-    },
-    err => console.error("GPS Error:", err),
-    {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 5000
-    }
-  );
-}, 4000); // Every 4 seconds = feels instant
-    }
-    function stopGPSTracking() {
-      if (trackingInterval) clearInterval(trackingInterval);
-      if (currentRequestId) { socket.emit('stop-tracking', currentRequestId); currentRequestId = null; }
-    }
+  if (!navigator.geolocation) return alert("GPS not supported");
+  currentRequestId = id;
+  socket.emit('start-tracking', id);
+
+  trackingInterval = setInterval(() => {
+    navigator.geolocation.watchPosition(
+      pos => {
+        const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+        socket.emit('update-location', { requestId: id, lat, lng, accuracy });
+        updateTransporterLocation(lat, lng);  // ← UPDATE MAP
+        console.log(`Live location sent: ${lat}, ${lng}`);
+      },
+      err => console.error("GPS Error:", err),
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+    );
+  }, 4000);
+}
     function updateStatus(id, status) {
-      fetch(`/api/transporter/update-status/${id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ status })
-      }).then(() => {
-        loadRequests();
-        if (status === 'Picked') { startGPSTracking(id); alert('GPS Tracking Started!'); }
-        if (status === 'Delivered') { stopGPSTracking(); alert('Tracking Stopped'); }
-      }).catch(err => alert('Failed to update status'));
+  fetch(`/api/transporter/update-status/${id}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ status })
+  }).then(() => {
+    loadRequests();
+    if (status === 'Picked') {
+      startGPSTracking(id);
+      showTrackingMap(id);  // ← SHOW MAP
+      alert('GPS Tracking Started!');
     }
+    if (status === 'Delivered') {
+      stopGPSTracking();
+      hideTrackingMap();    // ← HIDE MAP
+      alert('Tracking Stopped');
+    }
+  }).catch(err => alert('Failed to update status'));
+}
+
+function showTrackingMap(requestId) {
+  currentTrackingRequestId = requestId;
+  const section = document.getElementById('trackingSection');
+  if (section) section.style.display = 'block';
+
+  const row = document.querySelector(`tr[data-request-id="${requestId}"]`);
+  const pickupPlace = row?.getAttribute('data-pickup') || 'Pickup';
+
+  navigator.geolocation.getCurrentPosition(pos => {
+    const { latitude: lat, longitude: lng } = pos.coords;
+    initTrackingMap(lat, lng, pickupPlace);
+  }, () => {
+    initTrackingMap(-1.286389, 36.817223, pickupPlace);
+  });
+}
+
+function hideTrackingMap() {
+  const section = document.getElementById('trackingSection');
+  if (section) section.style.display = 'none';
+  if (trackingMap) trackingMap.remove();
+  trackingMap = null;
+  transporterMarker = null;
+  currentTrackingRequestId = null;
+}
+
     // === LOCATION BUTTONS ===
     document.getElementById('useMyLocation').onclick = () => {
       navigator.geolocation.getCurrentPosition(pos => {

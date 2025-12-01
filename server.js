@@ -16,7 +16,7 @@ const MPESA_CONSUMER_KEY = "4S8EraEJQPTUvxVWeF9zm82d3rEV42LGO7Ac5LAlRGDivH2Q";
 const MPESA_CONSUMER_SECRET = "QFAUlExgRQH8jA4nI86ZVlpdMwG1swYWmykDSTfYO8psHe82FkpCvPcgYyB3M0j0";
 const MPESA_SHORTCODE = "174379";
 const MPESA_PASSKEY = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919";
-const MPESA_CALLBACK_URL = "https://cherri-blunderful-unconvertibly.ngrok-free.dev/api/mpesa/callback";
+const MPESA_CALLBACK_URL = "https://agrimovers3.onrender.com/api/mpesa/callback";
 const MPESA_ENVIRONMENT = "sandbox";
 let mpesaAccessToken = null;
 let tokenExpiry = 0;
@@ -86,36 +86,53 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, "public")));
 app.use(sessionMiddleware); // ONLY ONCE
 // MySQL connection
-const db = mysql.createPool(
-  process.env.DATABASE_URL
-    ? {
-        connectionLimit: 10,
-        host: new URL(process.env.DATABASE_URL).hostname,
-        port: new URL(process.env.DATABASE_URL).port,
-        user: new URL(process.env.DATABASE_URL).username,
-        password: new URL(process.env.DATABASE_URL).password,
-        database: new URL(process.env.DATABASE_URL).pathname.slice(1),
-        ssl: { rejectUnauthorized: true },
-        waitForConnections: true,
-        queueLimit: 0
-      }
-    : {
-        host: "localhost",
-        user: "root",
-        password: "",
-        database: "agrimovers3"
-      }
-);
+// === SAFE MYSQL CONNECTION FOR RENDER ===
+let db;
 
-// Test connection
-db.getConnection((err) => {
-  if (err) {
-    console.error("DATABASE CONNECTION FAILED:", err.message);
-    process.exit(1);
-  } else {
-    console.log("Successfully connected to Aiven MySQL on Render!");
+if (process.env.DATABASE_URL) {
+  try {
+    const dbUrl = new URL(process.env.DATABASE_URL);
+    
+    db = mysql.createPool({
+      connectionLimit: 10,
+      host: dbUrl.hostname,
+      port: dbUrl.port || 3306,
+      user: dbUrl.username,
+      password: dbUrl.password,
+      database: dbUrl.pathname.slice(1),
+      ssl: {
+        rejectUnauthorized: true
+      },
+      waitForConnections: true,
+      queueLimit: 0
+    });
+
+    // Test connection without crashing
+    db.getConnection((err, connection) => {
+      if (err) {
+        console.error("Warning: Database connection failed:", err.message);
+        console.error("App will continue, but DB features will fail");
+        // DO NOT process.exit(1) — let it run!
+      } else {
+        console.log("Connected to Aiven MySQL on Render!");
+        if (connection) connection.release();
+      }
+    });
+
+  } catch (err) {
+    console.error("Invalid DATABASE_URL format:", err.message);
+    db = mysql.createPool({ connectionLimit: 1, host: "localhost" }); // fallback
   }
-});
+} else {
+  // Local development
+  db = mysql.createPool({
+    host: "localhost",
+    user: "root",
+    password: "",
+    database: "agrimovers3"
+  });
+  console.log("Connected to local MySQL");
+}
 /* Helpers */
 function ensureAuth(req, res, next) {
   if (!req.session || !req.session.userId) {
@@ -148,63 +165,85 @@ function ensureRole(role) {
     return res.status(403).send("Forbidden");
   };
 }
+app.post("/api/mpesa/callback", async (req, res) => {
+  console.log("M-Pesa Callback received:", req.body);
+  // Your existing callback code here...
+  res.json({ success: true });
+});
 /* ---------------- AUTH ---------------- */
 app.post("/register", async (req, res) => {
   try {
     const fullname = (req.body.fullname || "").trim();
-    const email = (req.body.email || "").trim().toLowerCase();
-    const password = req.body.password;
-    const confirmpassword = req.body.confirmpassword;
-    const role = req.body.role || "farmer";
-    if (!fullname || !email || !password || !confirmpassword)
-      return res.status(400).json({ message: "All fields required" });
-    if (password !== confirmpassword)
+    const email    = (req.body.email || "").trim().toLowerCase();
+    const password = req.body.password?.trim() || "";
+    const confirmPassword = req.body.confirmpassword?.trim() || "";   // ← fixed name
+    const role = ["farmer", "transporter"].includes(req.body.role?.trim())
+                 ? req.body.role.trim() : "farmer";
+
+    if (!fullname || !email || !password || !confirmPassword) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+    if (password !== confirmPassword) {
       return res.status(400).json({ message: "Passwords do not match" });
+    }
+
     const [existing] = await db.promise().query("SELECT id FROM users WHERE email = ?", [email]);
-    if (existing.length > 0)
+    if (existing.length > 0) {
       return res.status(400).json({ message: "Email already registered" });
+    }
+
     const hash = await bcrypt.hash(password, 10);
+
     await db.promise().query(
-      "INSERT INTO users (fullname, email, password, role) VALUES (?, ?, ?, ?)",
+      "INSERT INTO users (fullname, email, password, role, suspended) VALUES (?, ?, ?, ?, 0)",
       [fullname, email, hash, role]
     );
-    res.status(201).json({ message: "User registered successfully" });
+
+    res.status(201).json({ message: "Registered successfully! You can now login." });
   } catch (err) {
-    console.error("Register error:", err.message);
-    res.status(500).json({ message: "Database error during registration." });
+    console.error("Register error:", err);
+    res.status(500).json({ message: "Server error – check logs" });
   }
 });
 app.post("/login", async (req, res) => {
   try {
     const email = (req.body.email || "").trim().toLowerCase();
-    const password = req.body.password;
+    const password = req.body.password || "";
+
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password required" });
+    }
+
     const [rows] = await db.promise().query("SELECT * FROM users WHERE email = ?", [email]);
-    if (!rows.length) return res.status(401).json({ message: "Invalid credentials." });
+    if (!rows.length) {
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+
     const user = rows[0];
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(401).json({ message: "Invalid credentials." });
-    
-    // Check if suspended
-    if (user.suspended === 1) {
+
+    const match = await bcrypt.compare(password, user.password || "");
+    if (!match) {
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    // Safe suspended check – works even if column is missing
+    const isSuspended = user.suspended === 1 || user.suspended === "1";
+
+    if (isSuspended) {
       return res.status(403).json({ message: "Your account has been suspended. Contact support." });
     }
 
-    req.session.userId = user.id;
-    req.session.role = user.role;
-    req.session.name = user.fullname;
-    req.session.suspended = user.suspended;  // Cache for middleware
-    
+    // Save session safely
+    req.session.userId   = user.id;
+    req.session.role     = user.role || "farmer";
+    req.session.name     = user.fullname;
+    req.session.suspended = 0;  // always set to 0 or 1
+
     res.json({ message: "Login successful", role: user.role });
   } catch (err) {
-    console.error("Login error:", err.message);
-    res.status(500).json({ message: "Database error during login." });
+    console.error("Login error:", err);
+    res.status(500).json({ message: "Database error – check server logs" });
   }
-});
-app.get("/logout", (req, res) => {
-  req.session.destroy(() => {
-    res.clearCookie("connect.sid");
-    res.redirect("/index.html");
-  });
 });
 /* ---------------- FARMER ROUTES ---------------- */
 app.get("/api/farmer/profile", ensureAuth, ensureRole("farmer"), async (req, res) => {
