@@ -1182,6 +1182,13 @@ app.get("/", (req, res) => {
   res.redirect("/index.html");
 });
 
+// LOGOUT ROUTE → redirects to index.html
+app.get('/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.redirect('/index.html');
+  });
+});
+
 // === START THE SERVER (MUST USE 'server' because of Socket.IO) ===
 const PORT = process.env.PORT || 3000;
 
